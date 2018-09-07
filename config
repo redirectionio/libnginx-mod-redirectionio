@@ -1,0 +1,30 @@
+ngx_feature="Redirection IO library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_incs="#include <redirectionio.h>"
+ngx_feature_libs=-lredirectionio
+ngx_feature_test=
+. auto/feature
+ngx_addon_name=ngx_http_redirectionio_module
+
+if [ $ngx_found = yes ]; then
+	if test -n "$ngx_module_link"; then
+        ngx_module_type=HTTP
+        ngx_module_name=ngx_http_redirectionio_module
+        ngx_module_incs=
+        ngx_module_deps=
+        ngx_module_srcs="$ngx_addon_dir/ngx_http_redirectionio_module.c"
+        ngx_module_libs="$ngx_feature_libs"
+
+        . auto/module
+	else
+        HTTP_MODULES="$HTTP_MODULES ngx_http_redirectionio_module"
+        NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_redirectionio_module.c"
+		CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
+	fi
+else
+	cat << END
+$0: error: the redirection io module requires the redirection io library.
+END
+	exit 1
+fi
