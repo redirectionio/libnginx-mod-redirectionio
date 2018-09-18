@@ -1,0 +1,27 @@
+FROM debian:buster
+
+# Set correct environment variables.
+ENV DEBIAN_FRONTEND noninteractive
+ENV INITRD No
+
+RUN apt update && \
+    apt install -y nginx build-essential gawk wget libssl-dev libpcre3-dev libzip-dev libxml2-dev libxslt-dev libgd-dev libgeoip-dev libperl-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /root
+
+RUN NGINX_VERSION=`nginx -v 2>&1 | gawk 'match($0,/nginx version: nginx\/([0-9\.]+?)/,a) {print a[1]}'` && \
+    echo $NGINX_VERSION && \
+    wget http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz && \
+    tar -xzvf nginx-$NGINX_VERSION.tar.gz && \
+    mv /root/nginx-$NGINX_VERSION /root/nginx && \
+    rm nginx-$NGINX_VERSION.tar.gz
+
+WORKDIR /root/nginx
+
+COPY compile.deb.sh /root/nginx/compile.sh
+COPY nginx.conf /etc/nginx/nginx.conf
+
+RUN chmod +x /root/nginx/compile.sh
+
+CMD ["/root/nginx/compile.sh"]

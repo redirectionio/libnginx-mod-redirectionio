@@ -12,7 +12,11 @@ static const char GET_TARGET_QUERY[] = "GetTargetUrl\n{ \"project_key\": \"%V\",
 static const char GET_STATUS_QUERY[] = "GetStatusCode\n{ \"project_key\": \"%V\", \"rule_id\": \"%V\" }\n";
 static const char LOG_QUERY[] = "Log\n{ \"project_key\": \"%V\", \"source_url\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\" }\n";
 
-#define ngx_str_to_go_str(ngx) (GoString){ ngx.data, ngx.len }
+#define ngx_str_to_go_str(ngx) (GoString){ (const char*)ngx.data, ngx.len }
+
+#if !defined(NGX_HTTP_PRECONTENT_PHASE)
+#define NGX_HTTP_PRECONTENT_PHASE NGX_HTTP_PREACCESS_PHASE
+#endif
 
 typedef struct {
     ngx_uint_t  enable;
@@ -54,7 +58,6 @@ static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child)
 static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 
-static ngx_int_t ngx_http_redirectionio_init(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_init_process(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
@@ -368,7 +371,6 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
 
 static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_conf_t *conf;
-    ngx_log_t                     *log = r->connection->log;
     ngx_http_redirectionio_ctx_t  *ctx;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
@@ -554,9 +556,9 @@ static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev) {
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
-    user_agent = (ngx_str_t) { 0, "" };
-    referer = (ngx_str_t) { 0, "" };
-    location = (ngx_str_t) { 0, "" };
+    user_agent = (ngx_str_t) { 0, (u_char *)"" };
+    referer = (ngx_str_t) { 0, (u_char *)"" };
+    location = (ngx_str_t) { 0, (u_char *)"" };
 
     if (r->headers_in.user_agent != NULL && r->headers_in.user_agent->hash == 1) {
         user_agent.data = r->headers_in.user_agent->value.data;
@@ -610,11 +612,9 @@ static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev) {
 }
 
 static void ngx_http_redirectionio_read_find_rule_handler(ngx_event_t *rev, ngx_str_t *line) {
-    ssize_t                         n;
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_request_t              *r;
     ngx_connection_t                *c;
-    u_char                          *response;
 
     c = rev->data;
     r = c->data;
@@ -624,7 +624,7 @@ static void ngx_http_redirectionio_read_find_rule_handler(ngx_event_t *rev, ngx_
         ctx->matched_rule_id.data = line->data;
         ctx->matched_rule_id.len = line->len;
     } else {
-        ctx->matched_rule_id.data = "";
+        ctx->matched_rule_id.data = (u_char *)"";
         ctx->matched_rule_id.len = 0;
     }
 
@@ -634,7 +634,6 @@ static void ngx_http_redirectionio_read_find_rule_handler(ngx_event_t *rev, ngx_
 }
 
 static void ngx_http_redirectionio_read_get_target_handler(ngx_event_t *rev, ngx_str_t *line) {
-    ssize_t                         n;
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_request_t              *r;
     ngx_connection_t                *c;
@@ -652,7 +651,6 @@ static void ngx_http_redirectionio_read_get_target_handler(ngx_event_t *rev, ngx
 }
 
 static void ngx_http_redirectionio_read_get_status_handler(ngx_event_t *rev, ngx_str_t *line) {
-    ssize_t                         n;
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_request_t              *r;
     ngx_connection_t                *c;
@@ -662,11 +660,11 @@ static void ngx_http_redirectionio_read_get_status_handler(ngx_event_t *rev, ngx
     r = c->data;
 
     response = (u_char *) ngx_pcalloc(r->pool, line->len + 1);
-    ngx_copy(response, line->data, line->len);
+    response = ngx_copy(response, line->data, line->len);
     *(response + line->len + 1) = '\0';
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-    ctx->status = atoi(response);
+    ctx->status = atoi((const char*)response);
 
     ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
 
