@@ -543,7 +543,6 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
-    // @TODO Handle errors, a lot of segfault can come here
     cJSON *status = cJSON_GetObjectItem(json, "status_code");
     cJSON *location = cJSON_GetObjectItem(json, "location");
     cJSON *matched_rule = cJSON_GetObjectItem(json, "matched_rule");
@@ -609,6 +608,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
             }
 
             *buffer = '\0';
+            // @TODO This object is leaking (since we don't allocate it to the pool)
             cJSON *json = cJSON_Parse((char *)(buffer - len));
             ctx->read_handler(rev, json);
 

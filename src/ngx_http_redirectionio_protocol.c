@@ -3,16 +3,22 @@
 const char COMMAND_MATCH_NAME[] = "MATCH";
 const char COMMAND_MATCH_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\" }";
 const char COMMAND_LOG_NAME[] = "LOG";
-const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"source_url\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\" }";
+const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\" }";
 
 void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key) {
     ssize_t     wlen;
     u_char      *dst;
     ngx_str_t   v;
+    ngx_str_t   host = (ngx_str_t) { 0, (u_char *)"" };
 
-    wlen = sizeof(COMMAND_MATCH_QUERY) + project_key->len + r->uri.len + r->headers_in.host->value.len - 6;
+    if (r->headers_in.host != NULL) {
+        host.data = r->headers_in.host->value.data;
+        host.len = r->headers_in.host->value.len;
+    }
+
+    wlen = sizeof(COMMAND_MATCH_QUERY) + project_key->len + r->uri.len + host.len - 6;
     dst = (u_char *) ngx_pcalloc(c->pool, wlen);
-    ngx_sprintf(dst, COMMAND_MATCH_QUERY, project_key, &r->uri, &r->headers_in.host->value);
+    ngx_sprintf(dst, COMMAND_MATCH_QUERY, project_key, &r->uri, &host);
     v = (ngx_str_t) { wlen, dst };
 
     ngx_send(c, (u_char *)COMMAND_MATCH_NAME, sizeof(COMMAND_MATCH_NAME));
@@ -23,9 +29,11 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
     ssize_t     wlen;
     u_char      *dst;
     ngx_str_t   v;
+    // @TODO We should use nginx null string instead
     ngx_str_t   user_agent = (ngx_str_t) { 0, (u_char *)"" };
     ngx_str_t   referer = (ngx_str_t) { 0, (u_char *)"" };
     ngx_str_t   location = (ngx_str_t) { 0, (u_char *)"" };
+    ngx_str_t   host = (ngx_str_t) { 0, (u_char *)"" };
 
     if (r->headers_in.user_agent != NULL) {
         user_agent.data = r->headers_in.user_agent->value.data;
@@ -37,6 +45,11 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
         referer.len = r->headers_in.referer->value.len;
     }
 
+    if (r->headers_in.host != NULL) {
+        host.data = r->headers_in.host->value.data;
+        host.len = r->headers_in.host->value.len;
+    }
+
     if (r->headers_out.location != NULL) {
         location.data = r->headers_out.location->value.data;
         location.len = r->headers_out.location->value.len;
@@ -46,12 +59,13 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
         sizeof(COMMAND_LOG_QUERY)
         + project_key->len
         + r->uri.len
+        + host.len
         + rule_id->len
         + 3 // Status code length
         + location.len
         + user_agent.len
         + referer.len
-        - 14 // 7 * %x characters replaced with values
+        - 16 // 8 * %x characters replaced with values
     ;
 
     dst = (u_char *) ngx_pcalloc(c->pool, wlen);
@@ -61,6 +75,7 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
         COMMAND_LOG_QUERY,
         project_key,
         &r->uri,
+        &host,
         rule_id,
         &location,
         r->headers_out.status,
