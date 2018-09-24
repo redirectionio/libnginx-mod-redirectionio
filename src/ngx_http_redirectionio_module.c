@@ -3,83 +3,7 @@
 #include <ngx_http.h>
 
 #include <redirectionio.h>
-
-#define NGX_HTTP_REDIRECTIONIO_OFF     0
-#define NGX_HTTP_REDIRECTIONIO_ON      1
-
-static const char FIND_MACTHING_RULE_QUERY[] = "FindMatchingRule\n{ \"project_key\": \"%V\", \"source_url\": \"%V\" }\n";
-static const char GET_TARGET_QUERY[] = "GetTargetUrl\n{ \"project_key\": \"%V\", \"source_url\": \"%V\", \"rule_id\": \"%V\" }\n";
-static const char GET_STATUS_QUERY[] = "GetStatusCode\n{ \"project_key\": \"%V\", \"rule_id\": \"%V\" }\n";
-static const char LOG_QUERY[] = "Log\n{ \"project_key\": \"%V\", \"source_url\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\" }\n";
-
-#define ngx_str_to_go_str(ngx) (GoString){ (const char*)ngx.data, ngx.len }
-
-typedef struct {
-    ngx_uint_t                  enable;
-    ngx_uint_t                  enable_logs;
-    ngx_str_t                   project_key;
-    ngx_http_upstream_conf_t    upstream;
-    ngx_http_complex_value_t    *complex_target;
-} ngx_http_redirectionio_conf_t;
-
-typedef struct {
-    ngx_uint_t  enable;
-    ngx_str_t   instance_name;
-    ngx_str_t   api_host;
-    ngx_str_t   user_agent;
-    ngx_str_t   data_directory;
-    ngx_uint_t  debug;
-    ngx_uint_t  persist;
-    ngx_uint_t  cache;
-} ngx_http_redirectionio_agent_conf_t;
-
-typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, ngx_str_t *line);
-
-typedef struct {
-    ngx_peer_connection_t                   peer;
-    ngx_str_t                               matched_rule_id;
-    ngx_str_t                               target;
-    ngx_uint_t                              status;
-    ngx_http_redirectionio_read_handler_t   read_handler;
-    ngx_http_request_t                      *subrequest;
-} ngx_http_redirectionio_ctx_t;
-
-/**
- * List of values for boolean
- */
-static ngx_conf_enum_t  ngx_http_redirectionio_enable_state[] = {
-    { ngx_string("off"), NGX_HTTP_REDIRECTIONIO_OFF },
-    { ngx_string("on"), NGX_HTTP_REDIRECTIONIO_ON },
-    { ngx_null_string, 0 }
-};
-
-static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf);
-static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child);
-static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
-static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
-static char *ngx_http_redirectionio_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-
-static ngx_int_t ngx_http_redirectionio_init_process(ngx_cycle_t *cycle);
-static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
-
-static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
-static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r);
-static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
-
-ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
-
-static void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
-
-static void ngx_http_redirectionio_write_find_rule_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_get_target_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_get_status_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev);
-
-static void ngx_http_redirectionio_read_find_rule_handler(ngx_event_t *rev, ngx_str_t *line);
-static void ngx_http_redirectionio_read_get_target_handler(ngx_event_t *rev, ngx_str_t *line);
-static void ngx_http_redirectionio_read_get_status_handler(ngx_event_t *rev, ngx_str_t *line);
-static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, ngx_str_t *line);
+#include <ngx_http_redirectionio_module.h>
 
 /**
  * Commands definitions
@@ -365,7 +289,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
             ngx_close_connection(ctx->peer.connection);
         }
 
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        return NGX_DECLINED;
     }
 
     ctx->peer.connection->data = r;
@@ -398,25 +322,13 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     if (ctx->matched_rule_id.data == NULL) {
-        ngx_http_redirectionio_write_find_rule_handler(ctx->peer.connection->write);
+        ngx_http_redirectionio_write_match_rule_handler(ctx->peer.connection->write);
 
         return NGX_AGAIN;
     }
 
-    if (ctx->matched_rule_id.len == 0) { /* norule */
+    if (ctx->status == 0) { /* norule */
         return NGX_DECLINED;
-    }
-
-    if (ctx->status == 0) {
-        ngx_http_redirectionio_write_get_status_handler(ctx->peer.connection->write);
-
-        return NGX_AGAIN;
-    }
-
-    if (ctx->status != 410 && ctx->target.data == NULL) {
-        ngx_http_redirectionio_write_get_target_handler(ctx->peer.connection->write);
-
-        return NGX_AGAIN;
     }
 
     if (ctx->status != 410) {
@@ -588,151 +500,41 @@ ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void 
     return NGX_OK;
 }
 
-static void ngx_http_redirectionio_write_find_rule_handler(ngx_event_t *wev) {
-    ssize_t                         wlen;
+static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
     ngx_http_redirectionio_conf_t   *conf;
-    ngx_str_t                       v;
-    u_char                          *dst;
 
     c = wev->data;
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+    ctx->read_handler = ngx_http_redirectionio_read_match_rule_handler;
 
-    wlen = strlen(FIND_MACTHING_RULE_QUERY) + conf->project_key.len + r->uri.len;
-    dst = (u_char *) ngx_pcalloc(c->pool, wlen);
-    ngx_sprintf(dst, FIND_MACTHING_RULE_QUERY, &conf->project_key, &r->uri);
-    v = (ngx_str_t) { wlen - 4, dst };
-
-    ctx->read_handler = ngx_http_redirectionio_read_find_rule_handler;
-
-    ngx_send(c, v.data, v.len);
-}
-
-static void ngx_http_redirectionio_write_get_target_handler(ngx_event_t *wev) {
-    ssize_t                         wlen;
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_connection_t                *c;
-    ngx_http_request_t              *r;
-    ngx_http_redirectionio_conf_t   *conf;
-    ngx_str_t                       v;
-    u_char                          *dst;
-
-    c = wev->data;
-    r = c->data;
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    wlen = strlen(GET_TARGET_QUERY) + conf->project_key.len + r->uri.len + ctx->matched_rule_id.len;
-    dst = (u_char *) ngx_pcalloc(c->pool, wlen);
-    ngx_sprintf(dst, GET_TARGET_QUERY, &conf->project_key, &r->uri, &ctx->matched_rule_id);
-    v = (ngx_str_t) { wlen - 6, dst };
-
-    ctx->read_handler = ngx_http_redirectionio_read_get_target_handler;
-
-    ngx_send(c, v.data, v.len);
-}
-
-static void ngx_http_redirectionio_write_get_status_handler(ngx_event_t *wev) {
-    ssize_t                         wlen;
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_connection_t                *c;
-    ngx_http_request_t              *r;
-    ngx_http_redirectionio_conf_t   *conf;
-    ngx_str_t                       v;
-    u_char                          *dst;
-
-    c = wev->data;
-    r = c->data;
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    wlen = strlen(GET_STATUS_QUERY) + conf->project_key.len + ctx->matched_rule_id.len;
-    dst = (u_char *) ngx_pcalloc(c->pool, wlen);
-    ngx_sprintf(dst, GET_STATUS_QUERY, &conf->project_key, &ctx->matched_rule_id);
-    v = (ngx_str_t) { wlen - 4, dst };
-
-    ctx->read_handler = ngx_http_redirectionio_read_get_status_handler;
-
-    ngx_send(c, v.data, v.len);
+    ngx_http_redirectionio_protocol_send_match(c, r, &conf->project_key);
 }
 
 static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev) {
-    ssize_t                         wlen;
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
     ngx_http_redirectionio_conf_t   *conf;
-    ngx_str_t                       v;
-    u_char                          *dst;
-    ngx_str_t                       user_agent;
-    ngx_str_t                       referer;
-    ngx_str_t                       location;
 
     c = wev->data;
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    user_agent = (ngx_str_t) { 0, (u_char *)"" };
-    referer = (ngx_str_t) { 0, (u_char *)"" };
-    location = (ngx_str_t) { 0, (u_char *)"" };
-
-    if (r->headers_in.user_agent != NULL && r->headers_in.user_agent->hash == 1) {
-        user_agent.data = r->headers_in.user_agent->value.data;
-        user_agent.len = r->headers_in.user_agent->value.len;
-    }
-
-    if (r->headers_in.referer != NULL && r->headers_in.referer->hash == 1) {
-        referer.data = r->headers_in.referer->value.data;
-        referer.len = r->headers_in.referer->value.len;
-    }
-
-    if (r->headers_out.location != NULL && r->headers_out.location->hash == 1) {
-        location.data = r->headers_out.location->value.data;
-        location.len = r->headers_out.location->value.len;
-    }
-
-    wlen = strlen(LOG_QUERY)
-        + conf->project_key.len
-        + r->uri.len
-        + ctx->matched_rule_id.len
-        + 3
-        + location.len
-        + user_agent.len
-        + referer.len
-    ;
-
-    dst = (u_char *) ngx_pcalloc(c->pool, wlen);
-
-    ngx_sprintf(
-        dst,
-        LOG_QUERY,
-        &conf->project_key,
-        &r->uri,
-        &ctx->matched_rule_id,
-        &location,
-        r->headers_out.status,
-        &user_agent,
-        &referer
-    );
-
-    // Each formatted param has a length of 2 which has been removed
-    v = (ngx_str_t) { wlen - 14, dst };
-
     ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
 
-    ngx_send(c, v.data, v.len);
+    ngx_http_redirectionio_protocol_send_log(c, r, &conf->project_key, &ctx->matched_rule_id);
 }
 
 static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev) {
     return;
 }
 
-static void ngx_http_redirectionio_read_find_rule_handler(ngx_event_t *rev, ngx_str_t *line) {
+static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_request_t              *r;
     ngx_connection_t                *c;
@@ -741,50 +543,29 @@ static void ngx_http_redirectionio_read_find_rule_handler(ngx_event_t *rev, ngx_
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
-    if (line->len > 6) {
-        ctx->matched_rule_id.data = line->data;
-        ctx->matched_rule_id.len = line->len;
-    } else {
-        ctx->matched_rule_id.data = (u_char *)"";
-        ctx->matched_rule_id.len = 0;
+    // @TODO Handle errors, a lot of segfault can come here
+    cJSON *status = cJSON_GetObjectItem(json, "status_code");
+    cJSON *location = cJSON_GetObjectItem(json, "location");
+    cJSON *matched_rule = cJSON_GetObjectItem(json, "matched_rule");
+    cJSON *rule_id = NULL;
+
+    if (matched_rule != NULL && matched_rule->type != cJSON_NULL) {
+        rule_id = cJSON_GetObjectItem(matched_rule, "id");
     }
 
-    ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
-
-    ngx_http_core_run_phases(r);
-}
-
-static void ngx_http_redirectionio_read_get_target_handler(ngx_event_t *rev, ngx_str_t *line) {
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_http_request_t              *r;
-    ngx_connection_t                *c;
-
-    c = rev->data;
-    r = c->data;
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-
-    ctx->target.data = line->data;
-    ctx->target.len = line->len;
-
-    ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
-
-    ngx_http_core_run_phases(r);
-}
-
-static void ngx_http_redirectionio_read_get_status_handler(ngx_event_t *rev, ngx_str_t *line) {
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_http_request_t              *r;
-    ngx_connection_t                *c;
-    u_char                          *response;
-
-    c = rev->data;
-    r = c->data;
-
-    response = (u_char *) ngx_pcalloc(r->pool, line->len + 1);
-    *(ngx_copy(response, line->data, line->len) + 1) = '\0';
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-    ctx->status = atoi((const char*)response);
+    if (matched_rule == NULL || matched_rule->type == cJSON_NULL) {
+        ctx->matched_rule_id.data = (u_char *)"";
+        ctx->matched_rule_id.len = 0;
+        ctx->target.data = (u_char *)"";
+        ctx->target.len = 0;
+        ctx->status = 0;
+    } else {
+        ctx->matched_rule_id.data = (u_char *)rule_id->valuestring;
+        ctx->matched_rule_id.len = strlen(rule_id->valuestring);
+        ctx->target.data = (u_char *)location->valuestring;
+        ctx->target.len = strlen(location->valuestring);
+        ctx->status = status->valueint;
+    }
 
     ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
 
@@ -792,8 +573,6 @@ static void ngx_http_redirectionio_read_get_status_handler(ngx_event_t *rev, ngx
 }
 
 static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
-    // @TODO this methods can be called multipled times, we should store buffer in context
-    // and exiting this function as long as there is no more data
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
     ngx_http_redirectionio_ctx_t    *ctx;
@@ -802,7 +581,6 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     size_t                          len = 0;
     ngx_uint_t                      max_size = 8192;
     ssize_t                         readed;
-    ngx_str_t                       *line;
 
     c = rev->data;
     r = c->data;
@@ -817,6 +595,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         }
 
         if (readed == 0) { /* EOF */
+            // @TODO Shutdown / pass current request if available
             return;
         }
 
@@ -824,22 +603,16 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
             return;
         }
 
-        if (read == '\n') { /* Line readed, push it to the current handler */
+        if (read == '\0') { /* Message readed, push it to the current handler */
             if (len == 0) {
                 continue;
             }
 
-            line = (ngx_str_t *) ngx_pcalloc(c->pool, sizeof(ngx_str_t));
-            line->data = (buffer - len);
-            line->len = len;
+            *buffer = '\0';
+            cJSON *json = cJSON_Parse((char *)(buffer - len));
+            ctx->read_handler(rev, json);
 
-            ctx->read_handler(rev, line);
-
-            // Discard \n
-            buffer = (u_char *) ngx_pcalloc(c->pool, max_size);
-            len = 0;
-
-            continue;
+            return;
         }
 
         len++;
@@ -848,6 +621,6 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     }
 }
 
-static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, ngx_str_t *line) {
+static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json) {
     return;
 }
