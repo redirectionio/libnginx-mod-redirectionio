@@ -64,7 +64,7 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
         + location.len
         + user_agent.len
         + referer.len
-        - 16 // 8 * %x characters replaced with values
+        - 16 // 8 * 2 (%x) characters replaced with values
     ;
 
     dst = (u_char *) ngx_pcalloc(c->pool, wlen);
