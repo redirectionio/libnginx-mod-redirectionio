@@ -9,7 +9,7 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     ssize_t     wlen;
     u_char      *dst;
     ngx_str_t   v;
-    ngx_str_t   host = (ngx_str_t) { 0, (u_char *)"" };
+    ngx_str_t   host = ngx_null_string;
 
     if (r->headers_in.host != NULL) {
         host.data = r->headers_in.host->value.data;
@@ -29,11 +29,10 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
     ssize_t     wlen;
     u_char      *dst;
     ngx_str_t   v;
-    // @TODO We should use nginx null string instead
-    ngx_str_t   user_agent = (ngx_str_t) { 0, (u_char *)"" };
-    ngx_str_t   referer = (ngx_str_t) { 0, (u_char *)"" };
-    ngx_str_t   location = (ngx_str_t) { 0, (u_char *)"" };
-    ngx_str_t   host = (ngx_str_t) { 0, (u_char *)"" };
+    ngx_str_t   user_agent = ngx_null_string;
+    ngx_str_t   referer = ngx_null_string;
+    ngx_str_t   location = ngx_null_string;
+    ngx_str_t   host = ngx_null_string;
 
     if (r->headers_in.user_agent != NULL) {
         user_agent.data = r->headers_in.user_agent->value.data;

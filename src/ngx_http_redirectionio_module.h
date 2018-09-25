@@ -10,7 +10,6 @@ typedef struct {
     ngx_uint_t                  enable;
     ngx_uint_t                  enable_logs;
     ngx_str_t                   project_key;
-    ngx_http_upstream_conf_t    upstream;
     ngx_http_complex_value_t    *complex_target;
 } ngx_http_redirectionio_conf_t;
 
@@ -49,7 +48,6 @@ static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf);
 static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child);
 static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
-static char *ngx_http_redirectionio_upstream(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_init_process(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
@@ -68,3 +66,5 @@ static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev);
 
 static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json);
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
+
+static void ngx_http_redirectionio_json_cleanup(void *data);
