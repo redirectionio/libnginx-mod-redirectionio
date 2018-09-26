@@ -37,38 +37,8 @@ typedef struct {
     ngx_http_request_t                      *subrequest;
 } ngx_http_redirectionio_ctx_t;
 
-/**
- * List of values for boolean
- */
-static ngx_conf_enum_t  ngx_http_redirectionio_enable_state[] = {
-    { ngx_string("off"), NGX_HTTP_REDIRECTIONIO_OFF },
-    { ngx_string("on"), NGX_HTTP_REDIRECTIONIO_ON },
-    { ngx_null_string, 0 }
-};
 
-static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf);
-static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child);
-static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
-static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
-static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+typedef struct { const char *p; ptrdiff_t n; } GoString;
+typedef unsigned char GoUint8;
 
-static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle);
-static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle);
-static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
-
-static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
-static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r);
-static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
-
-ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
-
-static void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
-
-static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev);
-
-static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json);
-static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
-
-static void ngx_http_redirectionio_json_cleanup(void *data);
+typedef void (*redirectionio_init_func)(GoString p0, GoString p1, GoString p2, GoUint8 p3, GoString p4, GoString p5, GoUint8 p6, GoUint8 p7);

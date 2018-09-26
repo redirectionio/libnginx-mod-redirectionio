@@ -1,11 +1,48 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include <dlfcn.h>
 
-#include <redirectionio.h>
 #include <ngx_http_redirectionio_module.h>
 
 ngx_str_t NGX_HTTP_REDIRECTIONIO_CLIENT_NAME = ngx_string("redirectionio_agent_client");
+
+/**
+ * List of values for boolean
+ */
+static ngx_conf_enum_t  ngx_http_redirectionio_enable_state[] = {
+    { ngx_string("off"), NGX_HTTP_REDIRECTIONIO_OFF },
+    { ngx_string("on"), NGX_HTTP_REDIRECTIONIO_ON },
+    { ngx_null_string, 0 }
+};
+
+static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf);
+static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child);
+static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
+static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
+static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle);
+static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle);
+static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
+
+static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
+
+ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
+
+static void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
+
+static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev);
+static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev);
+static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev);
+
+static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json);
+static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
+
+static void ngx_http_redirectionio_json_cleanup(void *data);
+static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data);
 
 /**
  * Commands definitions
@@ -160,16 +197,9 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     racf = ngx_http_conf_get_module_main_conf(cf, ngx_http_redirectionio_module);
 
     if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
-        redirectionio_init(
-            ngx_str_to_go_str(racf->listen.url),
-            ngx_str_to_go_str(racf->instance_name),
-            ngx_str_to_go_str(racf->api_host),
-            racf->debug,
-            ngx_str_to_go_str(racf->user_agent),
-            ngx_str_to_go_str(racf->data_directory),
-            racf->persist,
-            racf->cache
-        );
+        // @TODO Change NORESPAWN to RESPAWN so nginx correctly restart our agent on failure, need to do some works to check there is
+        // no respawn loop if our agent fail at start
+        ngx_spawn_process(cf->cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_NORESPAWN);
     }
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
@@ -617,4 +647,53 @@ static void ngx_http_redirectionio_json_cleanup(void *data) {
 
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json) {
     return;
+}
+
+static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
+    ngx_http_redirectionio_agent_conf_t *racf = data;
+    ngx_core_conf_t                     *ccf;
+    redirectionio_init_func             redirectionio_init;
+    void			                    *redirectioniolib = NULL;
+
+    ccf = (ngx_core_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_core_module);
+
+    // Switch group and user
+    if (setgid(ccf->group) == -1) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno, "setgid(%d) failed", ccf->group);
+    }
+
+    if (initgroups(ccf->username, ccf->group) == -1) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno, "initgroups(%s, %d) failed", ccf->username, ccf->group);
+    }
+
+    if (setuid(ccf->user) == -1) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno, "setuid(%d) failed", ccf->user);
+    }
+
+    // Other security can be added here (set cap / chdir / ....) need to see what's revelant
+    ngx_setproctitle("redirectionio - agent");
+    ngx_log_stderr(0, "Launching Agent ? %V %V", &racf->listen.url, &racf->instance_name);
+
+    if (NULL != (redirectioniolib = dlopen("libredirectionio.so", RTLD_NOW|RTLD_NODELETE))) {
+        if (NULL != (redirectionio_init = dlsym(redirectioniolib, "redirectionio_init"))) {
+            (*redirectionio_init)(
+                ngx_str_to_go_str(racf->listen.url),
+                ngx_str_to_go_str(racf->instance_name),
+                ngx_str_to_go_str(racf->api_host),
+                racf->debug,
+                ngx_str_to_go_str(racf->user_agent),
+                ngx_str_to_go_str(racf->data_directory),
+                racf->persist,
+                racf->cache
+            );
+        } else {
+            ngx_log_stderr(0, dlerror());
+        }
+
+        dlclose(redirectioniolib);
+    } else {
+        ngx_log_stderr(0, dlerror());
+    }
+
+    exit(0);
 }
