@@ -133,23 +133,23 @@ ngx_module_t ngx_http_redirectionio_module = {
     NGX_HTTP_MODULE, /* module type */
     NULL, /* init master */
     NULL, /* init module */
-    ngx_http_redirectionio_init_process, /* init process */
+    ngx_http_redirectionio_init_worker, /* init process */
     NULL, /* init thread */
     NULL, /* exit thread */
     NULL, /* exit process */
-    NULL, /* exit master */
+    ngx_http_redirectionio_exit_master, /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
-static ngx_int_t ngx_http_redirectionio_init_process(ngx_cycle_t *cycle) {
+static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle) {
+    // @TODO Launch connection here ?
     return NGX_OK;
 }
 
-/**
- * Init
- *
- * Add handlers where needed
- */
+static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle) {
+    // @TODO Shutdown agent if started ?
+}
+
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     ngx_http_core_main_conf_t           *cmcf;
     ngx_http_handler_pt                 *create_ctx_handler;
@@ -159,7 +159,6 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 
     racf = ngx_http_conf_get_module_main_conf(cf, ngx_http_redirectionio_module);
 
-    // redirectionio_init(GoString instanceName, GoString apiHost, GoUint8 debug, GoString userAgent, GoString dataDirectory, GoUint8 persist, GoUint8 cache)
     if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
         redirectionio_init(
             ngx_str_to_go_str(racf->listen.url),
@@ -283,7 +282,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         return NGX_AGAIN;
     }
 
-    if (ctx->status == 0) { /* norule */
+    if (ctx->status == 0) {
         return NGX_DECLINED;
     }
 
