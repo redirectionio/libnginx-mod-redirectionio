@@ -38,7 +38,7 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
     {
         ngx_string("redirectionio_pass"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
+        ngx_http_redirectionio_set_url,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, pass),
         NULL
@@ -50,6 +50,14 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         NGX_HTTP_MAIN_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_agent_conf_t, enable),
         ngx_http_redirectionio_enable_state
+    },
+    {
+        ngx_string("redirectionio_listen"),
+        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
+        ngx_http_redirectionio_set_url,
+        NGX_HTTP_MAIN_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_agent_conf_t, listen),
+        NULL
     },
     {
         ngx_string("redirectionio_host"),
@@ -134,7 +142,6 @@ ngx_module_t ngx_http_redirectionio_module = {
 };
 
 static ngx_int_t ngx_http_redirectionio_init_process(ngx_cycle_t *cycle) {
-    // @TODO Init here connection to the agent (avoid reconnecting for each request), should use upstream
     return NGX_OK;
 }
 
@@ -153,16 +160,18 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     racf = ngx_http_conf_get_module_main_conf(cf, ngx_http_redirectionio_module);
 
     // redirectionio_init(GoString instanceName, GoString apiHost, GoUint8 debug, GoString userAgent, GoString dataDirectory, GoUint8 persist, GoUint8 cache)
-    redirectionio_init(
-        ngx_str_to_go_str(racf->listen),
-        ngx_str_to_go_str(racf->instance_name),
-        ngx_str_to_go_str(racf->api_host),
-        racf->debug,
-        ngx_str_to_go_str(racf->user_agent),
-        ngx_str_to_go_str(racf->data_directory),
-        racf->persist,
-        racf->cache
-    );
+    if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
+        redirectionio_init(
+            ngx_str_to_go_str(racf->listen.url),
+            ngx_str_to_go_str(racf->instance_name),
+            ngx_str_to_go_str(racf->api_host),
+            racf->debug,
+            ngx_str_to_go_str(racf->user_agent),
+            ngx_str_to_go_str(racf->data_directory),
+            racf->persist,
+            racf->cache
+        );
+    }
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
@@ -201,8 +210,6 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_int_t                       rc;
-    struct sockaddr_un              *saun;
-    ngx_str_t                       *name;
     ngx_http_redirectionio_conf_t   *conf;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
@@ -219,24 +226,9 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
 
     ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
-    saun = ngx_pcalloc(r->pool, sizeof(struct sockaddr_un));
-
-    if (saun == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    name = ngx_pcalloc(r->pool, sizeof(ngx_str_t));
-
-    if (name == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    saun->sun_family = AF_UNIX;
-    ngx_memcpy(saun->sun_path, conf->pass.data, conf->pass.len);
-
-    ctx->peer.sockaddr = (struct sockaddr *) saun;
-    ctx->peer.socklen = sizeof(struct sockaddr_un);
-    ctx->peer.name = &conf->pass;
+    ctx->peer.sockaddr = (struct sockaddr *)&conf->pass.sockaddr;
+    ctx->peer.socklen = conf->pass.socklen;
+    ctx->peer.name = &conf->pass.url;
     ctx->peer.get = ngx_http_redirectionio_get_connection;
     ctx->peer.log = r->connection->log;
     ctx->peer.log_error = NGX_ERROR_ERR;
@@ -278,6 +270,10 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     if (ctx == NULL) {
+        return NGX_DECLINED;
+    }
+
+    if (!ctx->peer.connection) {
         return NGX_DECLINED;
     }
 
@@ -325,6 +321,15 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     }
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+
+    if (ctx == NULL) {
+        return NGX_DECLINED;
+    }
+
+    if (!ctx->peer.connection) {
+        return NGX_DECLINED;
+    }
+
     ngx_http_redirectionio_write_log_handler(ctx->peer.connection->write);
 
     ngx_close_connection(ctx->peer.connection);
@@ -351,6 +356,7 @@ static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf) {
 
 static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child) {
     ngx_http_redirectionio_agent_conf_t *conf = child;
+    u_char                              *url;
 
     ngx_conf_init_uint_value(conf->debug, NGX_HTTP_REDIRECTIONIO_OFF);
     ngx_conf_init_uint_value(conf->persist, NGX_HTTP_REDIRECTIONIO_ON);
@@ -374,8 +380,19 @@ static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child)
         conf->user_agent = (ngx_str_t)ngx_string("Nginx RedirectionIo Module");
     }
 
-    if (conf->listen.data == NULL) {
-        conf->listen = (ngx_str_t)ngx_string(NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH);
+    if (conf->listen.url.data == NULL) {
+        url = (u_char *) ngx_pcalloc(cf->pool, sizeof("unix://") + sizeof(NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH) - 1);
+
+        if (url == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        ngx_sprintf(url, "unix://%s", NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH);
+        conf->listen.url = (ngx_str_t){ sizeof("unix://") + sizeof(NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH) - 2, url };
+
+        if (ngx_parse_url(cf->pool, &conf->listen) != NGX_OK) {
+            return NGX_CONF_ERROR;
+        }
     }
 
     return NGX_CONF_OK;
@@ -408,18 +425,46 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     ngx_conf_merge_uint_value(conf->enable_logs, prev->enable_logs, NGX_HTTP_REDIRECTIONIO_ON);
     ngx_conf_merge_str_value(conf->project_key, prev->project_key, "");
 
-    if (conf->pass.data == NULL) {
-        if (prev->pass.data) {
-            conf->pass.len = prev->pass.len;
-            conf->pass.data = prev->pass.data;
+    if (conf->pass.url.data == NULL) {
+        if (prev->pass.url.data) {
+            conf->pass = prev->pass;
         } else {
-            conf->pass.len = racf->listen.len;
-            conf->pass.data = racf->listen.data;
+            conf->pass = racf->listen;
         }
     }
 
     return NGX_CONF_OK;
 }
+
+static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    char  *p = conf;
+
+    ngx_url_t *field;
+    ngx_str_t *value;
+    ngx_conf_post_t  *post;
+
+    field = (ngx_url_t *) (p + cmd->offset);
+
+    if (field->url.data) {
+        return "is duplicate";
+    }
+
+    value = cf->args->elts;
+
+    field->url = value[1];
+
+    if (ngx_parse_url(cf->pool, field) != NGX_OK) {
+        return field->err;
+    }
+
+    if (cmd->post) {
+        post = cmd->post;
+        return post->post_handler(cf, post, field);
+    }
+
+    return NGX_CONF_OK;
+}
+
 
 ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data) {
     return NGX_OK;
