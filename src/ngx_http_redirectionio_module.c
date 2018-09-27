@@ -676,7 +676,7 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
         if (NULL != (redirectionio_set_log_handler = dlsym(redirectioniolib, "redirectionio_set_log_handler"))) {
             (*redirectionio_set_log_handler)(ngx_redirectionio_log_handler, cycle->log);
         } else {
-            ngx_log_error(NGX_LOG_WARN, cycle->log, ngx_errno, "dlsysm redirectionio_set_log_handler failed %s", dlerror());
+            ngx_log_error(NGX_LOG_WARN, cycle->log, ngx_errno, "dlsysm redirectionio_set_log_handler failed %s (log will be output to stderr)", dlerror());
         }
 
         if (NULL != (redirectionio_init = dlsym(redirectioniolib, "redirectionio_init"))) {
