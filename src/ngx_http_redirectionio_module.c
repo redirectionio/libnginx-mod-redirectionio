@@ -657,17 +657,21 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
 
     ccf = (ngx_core_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_core_module);
 
-    // Switch group and user
-    if (setgid(ccf->group) == -1) {
-        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setgid(%d) failed", ccf->group);
-    }
+    // Switch group and user if root
+    if (geteuid() == 0) {
+        if (setgid(ccf->group) == -1) {
+            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setgid(%d) failed", ccf->group);
+            exit(2);
+        }
 
-    if (initgroups(ccf->username, ccf->group) == -1) {
-        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "initgroups(%s, %d) failed", ccf->username, ccf->group);
-    }
+        if (initgroups(ccf->username, ccf->group) == -1) {
+            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "initgroups(%s, %d) failed", ccf->username, ccf->group);
+        }
 
-    if (setuid(ccf->user) == -1) {
-        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setuid(%d) failed", ccf->user);
+        if (setuid(ccf->user) == -1) {
+            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setuid(%d) failed", ccf->user);
+            exit(2);
+        }
     }
 
     // Other security can be added here (set cap / chdir / ....) need to see what's revelant
