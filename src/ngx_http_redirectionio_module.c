@@ -23,6 +23,7 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle);
+static ngx_int_t ngx_http_redirectionio_init_module(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
@@ -42,7 +43,7 @@ static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *j
 
 static void ngx_http_redirectionio_json_cleanup(void *data);
 static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data);
-static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_log_t *log);
+static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_cycle_t *cycle);
 
 /**
  * Commands definitions
@@ -169,7 +170,7 @@ ngx_module_t ngx_http_redirectionio_module = {
     ngx_http_redirectionio_commands, /* module directives */
     NGX_HTTP_MODULE, /* module type */
     NULL, /* init master */
-    NULL, /* init module */
+    ngx_http_redirectionio_init_module, /* init module */
     ngx_http_redirectionio_init_worker, /* init process */
     NULL, /* init thread */
     NULL, /* exit thread */
@@ -179,7 +180,21 @@ ngx_module_t ngx_http_redirectionio_module = {
 };
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle) {
-    // @TODO Launch connection here ?
+    // @TODO Init connections here
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_redirectionio_init_module(ngx_cycle_t *cycle) {
+    ngx_http_redirectionio_agent_conf_t *racf;
+
+    racf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_redirectionio_module);
+
+    if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
+        // @TODO Change NORESPAWN to RESPAWN so nginx correctly restart our agent on failure, need to do some works to check there is
+        // no respawn loop if our agent fail at start
+        ngx_spawn_process(cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_NORESPAWN);
+    }
+
     return NGX_OK;
 }
 
@@ -188,15 +203,6 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     ngx_http_handler_pt                 *create_ctx_handler;
     ngx_http_handler_pt                 *redirect_handler;
     ngx_http_handler_pt                 *log_handler;
-    ngx_http_redirectionio_agent_conf_t *racf;
-
-    racf = ngx_http_conf_get_module_main_conf(cf, ngx_http_redirectionio_module);
-
-    if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
-        // @TODO Change NORESPAWN to RESPAWN so nginx correctly restart our agent on failure, need to do some works to check there is
-        // no respawn loop if our agent fail at start
-        ngx_spawn_process(cf->cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_NORESPAWN);
-    }
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
@@ -669,7 +675,7 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
 
     if (NULL != (redirectioniolib = dlopen("libredirectionio.so", RTLD_NOW|RTLD_NODELETE))) {
         if (NULL != (redirectionio_set_log_handler = dlsym(redirectioniolib, "redirectionio_set_log_handler"))) {
-            (*redirectionio_set_log_handler)(ngx_redirectionio_log_handler, cycle->log);
+            (*redirectionio_set_log_handler)(ngx_redirectionio_log_handler, cycle);
         } else {
             ngx_log_error(NGX_LOG_WARN, cycle->log, ngx_errno, "dlsysm redirectionio_set_log_handler failed %s (log will be output to stderr)", dlerror());
         }
@@ -698,7 +704,7 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
     exit(result);
 }
 
-static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_log_t *log) {
+static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_cycle_t *cycle) {
     ngx_uint_t ngx_log_level;
 
     ngx_log_level = NGX_LOG_CRIT;
@@ -720,5 +726,5 @@ static void ngx_redirectionio_log_handler(unsigned char level, char* message, ng
         ngx_log_level = NGX_LOG_DEBUG;
     }
 
-    ngx_log_error(ngx_log_level, log, 0, "[redirectionio agent] %s", message);
+    ngx_log_error(ngx_log_level, cycle->log, 0, "[redirectionio agent] %s", message);
 }
