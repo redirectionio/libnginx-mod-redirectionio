@@ -190,9 +190,7 @@ static ngx_int_t ngx_http_redirectionio_init_module(ngx_cycle_t *cycle) {
     racf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_redirectionio_module);
 
     if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
-        // @TODO Change NORESPAWN to RESPAWN so nginx correctly restart our agent on failure, need to do some works to check there is
-        // no respawn loop if our agent fail at start
-        ngx_spawn_process(cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_NORESPAWN);
+        ngx_spawn_process(cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_RESPAWN);
     }
 
     return NGX_OK;
@@ -702,8 +700,6 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
     } else {
         ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "dlopen libredirectionio failed %s", dlerror());
     }
-
-    //@TODO Normal shutdown -> restart if possible / not normal -> not restart
 
     exit(result);
 }
