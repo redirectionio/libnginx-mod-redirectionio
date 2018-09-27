@@ -405,10 +405,6 @@ static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child)
         conf->data_directory = (ngx_str_t)ngx_string("/var/lib/redirectionio");
     }
 
-    if (conf->user_agent.data == NULL) {
-        conf->user_agent = (ngx_str_t)ngx_string("Nginx RedirectionIo Module");
-    }
-
     if (conf->listen.url.data == NULL) {
         url = (u_char *) ngx_pcalloc(cf->pool, sizeof("unix://") + sizeof(NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH) - 1);
 
@@ -590,7 +586,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     size_t                          len = 0;
     ngx_uint_t                      max_size = 8192;
     ssize_t                         readed;
-    ngx_http_cleanup_t              *cln;
+    ngx_pool_cleanup_t              *cln;
 
     c = rev->data;
     r = c->data;
@@ -626,7 +622,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
             *buffer = '\0';
             cJSON *json = cJSON_Parse((char *)(buffer - len));
 
-            cln = ngx_http_cleanup_add(r, 0);
+            cln = ngx_pool_cleanup_add(r->pool, 0);
             cln->handler = ngx_http_redirectionio_json_cleanup;
             cln->data = json;
 
@@ -651,6 +647,7 @@ static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *j
 
 static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
     ngx_http_redirectionio_agent_conf_t *racf = data;
+    GoUint8                             result = 0;
     ngx_core_conf_t                     *ccf;
     redirectionio_init_func             redirectionio_init;
     void			                    *redirectioniolib = NULL;
@@ -672,16 +669,14 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
 
     // Other security can be added here (set cap / chdir / ....) need to see what's revelant
     ngx_setproctitle("redirectionio - agent");
-    ngx_log_stderr(0, "Launching Agent ? %V %V", &racf->listen.url, &racf->instance_name);
 
     if (NULL != (redirectioniolib = dlopen("libredirectionio.so", RTLD_NOW|RTLD_NODELETE))) {
         if (NULL != (redirectionio_init = dlsym(redirectioniolib, "redirectionio_init"))) {
-            (*redirectionio_init)(
+            result = (*redirectionio_init)(
                 ngx_str_to_go_str(racf->listen.url),
                 ngx_str_to_go_str(racf->instance_name),
                 ngx_str_to_go_str(racf->api_host),
                 racf->debug,
-                ngx_str_to_go_str(racf->user_agent),
                 ngx_str_to_go_str(racf->data_directory),
                 racf->persist,
                 racf->cache
@@ -695,5 +690,7 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
         ngx_log_stderr(0, dlerror());
     }
 
-    exit(0);
+    //@TODO Normal shutdown -> restart if possible / not normal -> not restart
+
+    exit(result);
 }

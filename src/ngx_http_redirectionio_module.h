@@ -18,7 +18,6 @@ typedef struct {
     ngx_uint_t  enable;
     ngx_str_t   instance_name;
     ngx_str_t   api_host;
-    ngx_str_t   user_agent;
     ngx_str_t   data_directory;
     ngx_uint_t  debug;
     ngx_uint_t  persist;
@@ -41,4 +40,5 @@ typedef struct {
 typedef struct { const char *p; ptrdiff_t n; } GoString;
 typedef unsigned char GoUint8;
 
-typedef void (*redirectionio_init_func)(GoString p0, GoString p1, GoString p2, GoUint8 p3, GoString p4, GoString p5, GoUint8 p6, GoUint8 p7);
+// func redirectionio_init(listen string, instanceName string, apiHost string, debug bool, dataDirectory string, persist bool, cache bool) uint8
+typedef GoUint8 (*redirectionio_init_func)(GoString listen, GoString instanceName, GoString apiHost, GoUint8 debug, GoString dataDirectory, GoUint8 persist, GoUint8 cache);
