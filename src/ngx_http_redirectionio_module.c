@@ -43,6 +43,7 @@ static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *j
 
 static void ngx_http_redirectionio_json_cleanup(void *data);
 static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data);
+static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_log_t *log);
 
 /**
  * Commands definitions
@@ -650,27 +651,34 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
     GoUint8                             result = 0;
     ngx_core_conf_t                     *ccf;
     redirectionio_init_func             redirectionio_init;
+    redirectionio_set_log_handler_func  redirectionio_set_log_handler;
     void			                    *redirectioniolib = NULL;
 
     ccf = (ngx_core_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_core_module);
 
     // Switch group and user
     if (setgid(ccf->group) == -1) {
-        ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno, "setgid(%d) failed", ccf->group);
+        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setgid(%d) failed", ccf->group);
     }
 
     if (initgroups(ccf->username, ccf->group) == -1) {
-        ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno, "initgroups(%s, %d) failed", ccf->username, ccf->group);
+        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "initgroups(%s, %d) failed", ccf->username, ccf->group);
     }
 
     if (setuid(ccf->user) == -1) {
-        ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno, "setuid(%d) failed", ccf->user);
+        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setuid(%d) failed", ccf->user);
     }
 
     // Other security can be added here (set cap / chdir / ....) need to see what's revelant
     ngx_setproctitle("redirectionio - agent");
 
     if (NULL != (redirectioniolib = dlopen("libredirectionio.so", RTLD_NOW|RTLD_NODELETE))) {
+        if (NULL != (redirectionio_set_log_handler = dlsym(redirectioniolib, "redirectionio_set_log_handler"))) {
+            (*redirectionio_set_log_handler)(ngx_redirectionio_log_handler, cycle->log);
+        } else {
+            ngx_log_error(NGX_LOG_WARN, cycle->log, ngx_errno, "dlsysm redirectionio_set_log_handler failed %s", dlerror());
+        }
+
         if (NULL != (redirectionio_init = dlsym(redirectioniolib, "redirectionio_init"))) {
             result = (*redirectionio_init)(
                 ngx_str_to_go_str(racf->listen.url),
@@ -682,15 +690,40 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
                 racf->cache
             );
         } else {
-            ngx_log_stderr(0, dlerror());
+            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "dlsysm redirectionio_init failed %s", dlerror());
         }
 
         dlclose(redirectioniolib);
     } else {
-        ngx_log_stderr(0, dlerror());
+        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "dlopen libredirectionio failed %s", dlerror());
     }
 
     //@TODO Normal shutdown -> restart if possible / not normal -> not restart
 
     exit(result);
+}
+
+static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_log_t *log) {
+    ngx_uint_t ngx_log_level;
+
+    ngx_log_level = NGX_LOG_CRIT;
+
+    // panic = 0, fatal = 1, error = 2, warn = 3, info = 4, debug = 5
+    if (level == 2) {
+        ngx_log_level = NGX_LOG_ERR;
+    }
+
+    if (level == 3) {
+        ngx_log_level = NGX_LOG_WARN;
+    }
+
+    if (level == 4) {
+        ngx_log_level = NGX_LOG_INFO;
+    }
+
+    if (level == 5) {
+        ngx_log_level = NGX_LOG_DEBUG;
+    }
+
+    ngx_log_error(ngx_log_level, log, 0, "[redirectionio agent] %s", message);
 }

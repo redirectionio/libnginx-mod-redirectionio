@@ -42,3 +42,4 @@ typedef unsigned char GoUint8;
 
 // func redirectionio_init(listen string, instanceName string, apiHost string, debug bool, dataDirectory string, persist bool, cache bool) uint8
 typedef GoUint8 (*redirectionio_init_func)(GoString listen, GoString instanceName, GoString apiHost, GoUint8 debug, GoString dataDirectory, GoUint8 persist, GoUint8 cache);
+typedef void (*redirectionio_set_log_handler_func)(void* handler, void* log);
