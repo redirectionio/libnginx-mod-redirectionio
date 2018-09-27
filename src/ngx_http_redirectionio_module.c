@@ -385,7 +385,6 @@ static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf) {
 
 static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child) {
     ngx_http_redirectionio_agent_conf_t *conf = child;
-    u_char                              *url;
 
     ngx_conf_init_uint_value(conf->debug, NGX_HTTP_REDIRECTIONIO_OFF);
     ngx_conf_init_uint_value(conf->persist, NGX_HTTP_REDIRECTIONIO_ON);
@@ -405,19 +404,8 @@ static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child)
         conf->data_directory = (ngx_str_t)ngx_string("/var/lib/redirectionio");
     }
 
-    if (conf->listen.url.data == NULL) {
-        url = (u_char *) ngx_pcalloc(cf->pool, sizeof("unix://") + sizeof(NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH) - 1);
-
-        if (url == NULL) {
-            return NGX_CONF_ERROR;
-        }
-
-        ngx_sprintf(url, "unix://%s", NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH);
-        conf->listen.url = (ngx_str_t){ sizeof("unix://") + sizeof(NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH) - 2, url };
-
-        if (ngx_parse_url(cf->pool, &conf->listen) != NGX_OK) {
-            return NGX_CONF_ERROR;
-        }
+    if (conf->listen.data == NULL) {
+        conf->listen = (ngx_str_t)ngx_string("127.0.0.1:10301");
     }
 
     return NGX_CONF_OK;
@@ -442,9 +430,6 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf) {
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child) {
     ngx_http_redirectionio_conf_t       *prev = parent;
     ngx_http_redirectionio_conf_t       *conf = child;
-    ngx_http_redirectionio_agent_conf_t *racf;
-
-    racf = ngx_http_conf_get_module_main_conf(cf, ngx_http_redirectionio_module);
 
     ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
     ngx_conf_merge_uint_value(conf->enable_logs, prev->enable_logs, NGX_HTTP_REDIRECTIONIO_ON);
@@ -454,7 +439,11 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         if (prev->pass.url.data) {
             conf->pass = prev->pass;
         } else {
-            conf->pass = racf->listen;
+            conf->pass.url = (ngx_str_t)ngx_string("127.0.0.1:10301");
+
+            if (ngx_parse_url(cf->pool, &conf->pass) != NGX_OK) {
+                return NGX_CONF_ERROR;
+            }
         }
     }
 
@@ -675,31 +664,40 @@ static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
     // Other security can be added here (set cap / chdir / ....) need to see what's revelant
     ngx_setproctitle("redirectionio - agent");
 
-    if (NULL != (redirectioniolib = dlopen("libredirectionio.so", RTLD_NOW|RTLD_NODELETE))) {
-        if (NULL != (redirectionio_set_log_handler = dlsym(redirectioniolib, "redirectionio_set_log_handler"))) {
-            (*redirectionio_set_log_handler)(ngx_redirectionio_log_handler, cycle);
-        } else {
-            ngx_log_error(NGX_LOG_WARN, cycle->log, ngx_errno, "dlsysm redirectionio_set_log_handler failed %s (log will be output to stderr)", dlerror());
-        }
+    redirectioniolib = dlopen("libredirectionio.so", RTLD_NOW|RTLD_NODELETE);
 
-        if (NULL != (redirectionio_init = dlsym(redirectioniolib, "redirectionio_init"))) {
-            result = (*redirectionio_init)(
-                ngx_str_to_go_str(racf->listen.url),
-                ngx_str_to_go_str(racf->instance_name),
-                ngx_str_to_go_str(racf->api_host),
-                racf->debug,
-                ngx_str_to_go_str(racf->data_directory),
-                racf->persist,
-                racf->cache
-            );
-        } else {
-            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "dlsysm redirectionio_init failed %s", dlerror());
-        }
+    if (redirectioniolib == NULL) {
+        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "cannot launch redirectionio agent: dlopen libredirectionio failed: %s", dlerror());
+        exit(2);
+    }
+
+    redirectionio_set_log_handler = dlsym(redirectioniolib, "redirectionio_set_log_handler");
+    redirectionio_init = dlsym(redirectioniolib, "redirectionio_init");
+
+    if (redirectionio_init == NULL) {
+        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "cannot launch redirectionio agent: dlsysm redirectionio_init failed: %s", dlerror());
 
         dlclose(redirectioniolib);
-    } else {
-        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "dlopen libredirectionio failed %s", dlerror());
+        exit(2);
     }
+
+    if (redirectionio_set_log_handler == NULL) {
+        ngx_log_error(NGX_LOG_WARN, cycle->log, ngx_errno, "cannot set log handler (log will be output to stderr): dlsysm redirectionio_set_log_handler failed: %s", dlerror());
+    } else {
+        (*redirectionio_set_log_handler)(ngx_redirectionio_log_handler, cycle);
+    }
+
+    result = (*redirectionio_init)(
+        ngx_str_to_go_str(racf->listen),
+        ngx_str_to_go_str(racf->instance_name),
+        ngx_str_to_go_str(racf->api_host),
+        racf->debug,
+        ngx_str_to_go_str(racf->data_directory),
+        racf->persist,
+        racf->cache
+    );
+
+    dlclose(redirectioniolib);
 
     exit(result);
 }

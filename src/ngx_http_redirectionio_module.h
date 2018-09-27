@@ -22,7 +22,7 @@ typedef struct {
     ngx_uint_t  debug;
     ngx_uint_t  persist;
     ngx_uint_t  cache;
-    ngx_url_t   listen;
+    ngx_str_t   listen;
 } ngx_http_redirectionio_agent_conf_t;
 
 typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, cJSON *json);

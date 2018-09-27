@@ -15,11 +15,6 @@ _HTTP_REDIRECTIONIO_SRCS="\
   $ngx_addon_dir/src/ngx_http_redirectionio_protocol.c \
 "
 
-NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH=/var/lib/nginx/agent.sock
-
-have=NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH value="\"$NGX_HTTP_REDIRECTIONIO_AGENT_TEMP_PATH\""
-. auto/define
-
 if [ $ngx_found = yes ]; then
 	if test -n "$ngx_module_link"; then
         ngx_module_type=HTTP
