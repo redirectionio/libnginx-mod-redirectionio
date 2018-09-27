@@ -23,7 +23,6 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle);
-static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
@@ -175,17 +174,13 @@ ngx_module_t ngx_http_redirectionio_module = {
     NULL, /* init thread */
     NULL, /* exit thread */
     NULL, /* exit process */
-    ngx_http_redirectionio_exit_master, /* exit master */
+    NULL, /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle) {
     // @TODO Launch connection here ?
     return NGX_OK;
-}
-
-static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle) {
-    // @TODO Shutdown agent if started ?
 }
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
