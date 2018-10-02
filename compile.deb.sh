@@ -3,7 +3,6 @@
 set -e
 
 #export NGINX_VERSION=`nginx -v 2>&1 | gawk 'match($0,/nginx version: nginx\/([0-9\.]+?)/,a) {print a[1]}'`
-cp /root/clients/binaries/libredirectionio.h /usr/include/redirectionio.h
 cp /root/clients/binaries/libredirectionio.so /usr/lib/libredirectionio.so
 
 chmod +x /usr/lib/libredirectionio.so

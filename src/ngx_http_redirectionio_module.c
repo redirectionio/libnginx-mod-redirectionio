@@ -92,7 +92,7 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
     {
         ngx_string("redirectionio_listen"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_http_redirectionio_set_url,
+        ngx_conf_set_str_slot,
         NGX_HTTP_MAIN_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_agent_conf_t, listen),
         NULL
@@ -431,7 +431,6 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     ngx_http_redirectionio_conf_t       *prev = parent;
     ngx_http_redirectionio_conf_t       *conf = child;
 
-    ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
     ngx_conf_merge_uint_value(conf->enable_logs, prev->enable_logs, NGX_HTTP_REDIRECTIONIO_ON);
     ngx_conf_merge_str_value(conf->project_key, prev->project_key, "");
 
@@ -445,6 +444,12 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
                 return NGX_CONF_ERROR;
             }
         }
+    }
+
+    if (conf->project_key.len > 0) {
+        ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_ON);
+    } else {
+        ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
     }
 
     return NGX_CONF_OK;
