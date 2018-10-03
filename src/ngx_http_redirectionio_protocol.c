@@ -5,7 +5,7 @@ const char COMMAND_MATCH_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \
 const char COMMAND_LOG_NAME[] = "LOG";
 const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\" }";
 
-void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key) {
+void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *uri, ngx_str_t *project_key) {
     ssize_t     wlen;
     u_char      *dst;
     ngx_str_t   v;
@@ -16,16 +16,16 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
         host.len = r->headers_in.host->value.len;
     }
 
-    wlen = sizeof(COMMAND_MATCH_QUERY) + project_key->len + r->uri.len + host.len - 6;
+    wlen = sizeof(COMMAND_MATCH_QUERY) + project_key->len + uri->len + host.len - 6;
     dst = (u_char *) ngx_pcalloc(c->pool, wlen);
-    ngx_sprintf(dst, COMMAND_MATCH_QUERY, project_key, &r->uri, &host);
+    ngx_sprintf(dst, COMMAND_MATCH_QUERY, project_key, uri, &host);
     v = (ngx_str_t) { wlen, dst };
 
     ngx_send(c, (u_char *)COMMAND_MATCH_NAME, sizeof(COMMAND_MATCH_NAME));
     ngx_send(c, v.data, v.len);
 }
 
-void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id) {
+void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *uri, ngx_str_t *project_key, ngx_str_t *rule_id) {
     ssize_t     wlen;
     u_char      *dst;
     ngx_str_t   v;
@@ -57,7 +57,7 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
     wlen =
         sizeof(COMMAND_LOG_QUERY)
         + project_key->len
-        + r->uri.len
+        + uri->len
         + host.len
         + rule_id->len
         + 3 // Status code length
@@ -73,7 +73,7 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_requ
         dst,
         COMMAND_LOG_QUERY,
         project_key,
-        &r->uri,
+        uri,
         &host,
         rule_id,
         &location,

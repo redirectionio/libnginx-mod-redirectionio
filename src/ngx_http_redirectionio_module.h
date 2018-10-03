@@ -30,6 +30,7 @@ typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, cJSON *j
 typedef struct {
     ngx_peer_connection_t                   peer;
     ngx_str_t                               matched_rule_id;
+    ngx_str_t                               uri;
     ngx_str_t                               target;
     ngx_uint_t                              status;
     ngx_http_redirectionio_read_handler_t   read_handler;
