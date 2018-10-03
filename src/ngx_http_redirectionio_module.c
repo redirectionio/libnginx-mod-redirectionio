@@ -42,6 +42,7 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
 
 static void ngx_http_redirectionio_json_cleanup(void *data);
+static void ngx_http_redirectionio_connection_cleanup(void *data);
 static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data);
 static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_cycle_t *cycle);
 
@@ -240,6 +241,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_int_t                       rc;
     ngx_http_redirectionio_conf_t   *conf;
+    ngx_pool_cleanup_t              *cln;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -277,6 +279,10 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
     ctx->peer.connection->pool = r->connection->pool;
     ctx->peer.connection->read->handler = ngx_http_redirectionio_read_handler;
     ctx->peer.connection->write->handler = ngx_http_redirectionio_write_dummy_handler;
+
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+    cln->handler = ngx_http_redirectionio_connection_cleanup;
+    cln->data = ctx->peer.connection;
 
     return NGX_DECLINED;
 }
@@ -360,8 +366,6 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     }
 
     ngx_http_redirectionio_write_log_handler(ctx->peer.connection->write);
-
-    ngx_close_connection(ctx->peer.connection);
 
     return NGX_DECLINED;
 }
@@ -494,8 +498,6 @@ static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev) {
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
     ngx_http_redirectionio_conf_t   *conf;
-    u_char                          *full_uri_data;
-    ngx_uint_t                      full_uri_size = 0;
 
     c = wev->data;
     r = c->data;
@@ -503,29 +505,7 @@ static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev) {
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
     ctx->read_handler = ngx_http_redirectionio_read_match_rule_handler;
 
-    full_uri_size = r->uri.len;
-
-    if (r->args.len > 0) {
-        full_uri_size = full_uri_size + 1 + r->args.len;
-    }
-
-    full_uri_data = (u_char *) ngx_pcalloc(c->pool, full_uri_size);
-
-    if (full_uri_data == NULL) {
-        return;
-    }
-
-    ngx_memcpy(full_uri_data, r->uri.data, r->uri.len);
-
-    if (r->args.len > 0) {
-        *(full_uri_data + r->uri.len) = '?';
-        ngx_memcpy(full_uri_data + r->uri.len + 1, r->args.data, r->args.len);
-    }
-
-    ctx->uri.len = full_uri_size;
-    ctx->uri.data = full_uri_data;
-
-    ngx_http_redirectionio_protocol_send_match(c, r, &ctx->uri, &conf->project_key);
+    ngx_http_redirectionio_protocol_send_match(c, r, &conf->project_key);
 }
 
 static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev) {
@@ -540,7 +520,7 @@ static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev) {
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
     ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
 
-    ngx_http_redirectionio_protocol_send_log(c, r, &ctx->uri, &conf->project_key, &ctx->matched_rule_id);
+    ngx_http_redirectionio_protocol_send_log(c, r, &conf->project_key, &ctx->matched_rule_id);
 }
 
 static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev) {
@@ -657,6 +637,10 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
 static void ngx_http_redirectionio_json_cleanup(void *data) {
     cJSON_Delete((cJSON *)data);
+}
+
+static void ngx_http_redirectionio_connection_cleanup(void *data) {
+    ngx_close_connection(data);
 }
 
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json) {
