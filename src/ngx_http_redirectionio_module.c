@@ -24,6 +24,7 @@ static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, 
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_init_module(ngx_cycle_t *cycle);
+static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
@@ -176,9 +177,11 @@ ngx_module_t ngx_http_redirectionio_module = {
     NULL, /* init thread */
     NULL, /* exit thread */
     NULL, /* exit process */
-    NULL, /* exit master */
+    ngx_http_redirectionio_exit_master, /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
+static ngx_pid_t ngx_http_redirectionio_agent_pid = 0;
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle) {
     // @TODO Init connections here
@@ -190,11 +193,28 @@ static ngx_int_t ngx_http_redirectionio_init_module(ngx_cycle_t *cycle) {
 
     racf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_redirectionio_module);
 
+    if (ngx_http_redirectionio_agent_pid != 0) {
+        if (kill(ngx_http_redirectionio_agent_pid, 15) == -1) {
+            ngx_log_error(NGX_LOG_CRIT, cycle->log, 0, "[redirectionio agent] cannot restart redirectionio agent on pid %d", ngx_http_redirectionio_agent_pid);
+
+            return NGX_OK;
+        }
+    }
+
     if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
-        ngx_spawn_process(cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_RESPAWN);
+        ngx_http_redirectionio_agent_pid = ngx_spawn_process(cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_DETACHED);
     }
 
     return NGX_OK;
+}
+
+static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle) {
+    if (ngx_http_redirectionio_agent_pid != 0) {
+        // Detached need to stop it
+        if (kill(ngx_http_redirectionio_agent_pid, 15) == -1) {
+            ngx_log_error(NGX_LOG_CRIT, cycle->log, 0, "[redirectionio agent] cannot kill redirectionio agent on pid %d", ngx_http_redirectionio_agent_pid);
+        }
+    }
 }
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
