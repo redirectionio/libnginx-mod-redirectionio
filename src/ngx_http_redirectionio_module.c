@@ -60,7 +60,7 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         NULL
     },
     {
-        ngx_string("redirectionio_no_logs"),
+        ngx_string("redirectionio_logs"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
         ngx_conf_set_enum_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
