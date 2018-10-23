@@ -5,8 +5,6 @@
 
 #include <ngx_http_redirectionio_module.h>
 
-ngx_str_t NGX_HTTP_REDIRECTIONIO_CLIENT_NAME = ngx_string("redirectionio_agent_client");
-
 /**
  * List of values for boolean
  */
@@ -16,15 +14,11 @@ static ngx_conf_enum_t  ngx_http_redirectionio_enable_state[] = {
     { ngx_null_string, 0 }
 };
 
-static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf);
-static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child);
 static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle);
-static ngx_int_t ngx_http_redirectionio_init_module(ngx_cycle_t *cycle);
-static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
@@ -44,8 +38,6 @@ static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *j
 
 static void ngx_http_redirectionio_json_cleanup(void *data);
 static void ngx_http_redirectionio_connection_cleanup(void *data);
-static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data);
-static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_cycle_t *cycle);
 
 /**
  * Commands definitions
@@ -83,70 +75,6 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         offsetof(ngx_http_redirectionio_conf_t, pass),
         NULL
     },
-    {
-        ngx_string("redirectionio_agent_enable"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_enum_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, enable),
-        ngx_http_redirectionio_enable_state
-    },
-    {
-        ngx_string("redirectionio_listen"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, listen),
-        NULL
-    },
-    {
-        ngx_string("redirectionio_host"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, api_host),
-        NULL
-    },
-    {
-        ngx_string("redirectionio_instance_name"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, instance_name),
-        NULL
-    },
-    {
-        ngx_string("redirectionio_datadir"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, data_directory),
-        NULL
-    },
-    {
-        ngx_string("redirectionio_debug"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_enum_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, debug),
-        ngx_http_redirectionio_enable_state
-    },
-    {
-        ngx_string("redirectionio_persist"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_enum_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, persist),
-        ngx_http_redirectionio_enable_state
-    },
-    {
-        ngx_string("redirectionio_cache"),
-        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_enum_slot,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_agent_conf_t, cache),
-        ngx_http_redirectionio_enable_state
-    },
     ngx_null_command /* command termination */
 };
 
@@ -155,8 +83,8 @@ static ngx_http_module_t ngx_http_redirectionio_module_ctx = {
     NULL, /* preconfiguration */
     ngx_http_redirectionio_postconfiguration, /* postconfiguration */
 
-    ngx_http_redirectionio_create_agent_conf, /* create main configuration */
-    ngx_http_redirectionio_init_agent_conf, /* init main configuration */
+    NULL, /* create main configuration */
+    NULL, /* init main configuration */
 
     NULL, /* create server configuration */
     NULL, /* merge server configuration */
@@ -172,49 +100,18 @@ ngx_module_t ngx_http_redirectionio_module = {
     ngx_http_redirectionio_commands, /* module directives */
     NGX_HTTP_MODULE, /* module type */
     NULL, /* init master */
-    ngx_http_redirectionio_init_module, /* init module */
+    NULL, /* init module */
     ngx_http_redirectionio_init_worker, /* init process */
     NULL, /* init thread */
     NULL, /* exit thread */
     NULL, /* exit process */
-    ngx_http_redirectionio_exit_master, /* exit master */
+    NULL, /* exit master */
     NGX_MODULE_V1_PADDING
 };
-
-static ngx_pid_t ngx_http_redirectionio_agent_pid = 0;
 
 static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle) {
     // @TODO Init connections here
     return NGX_OK;
-}
-
-static ngx_int_t ngx_http_redirectionio_init_module(ngx_cycle_t *cycle) {
-    ngx_http_redirectionio_agent_conf_t *racf;
-
-    racf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_redirectionio_module);
-
-    if (ngx_http_redirectionio_agent_pid != 0) {
-        if (kill(ngx_http_redirectionio_agent_pid, 15) == -1) {
-            ngx_log_error(NGX_LOG_CRIT, cycle->log, 0, "[redirectionio agent] cannot restart redirectionio agent on pid %d", ngx_http_redirectionio_agent_pid);
-
-            return NGX_OK;
-        }
-    }
-
-    if (racf->enable == NGX_HTTP_REDIRECTIONIO_ON) {
-        ngx_http_redirectionio_agent_pid = ngx_spawn_process(cycle, ngx_redirectionio_execute_agent, racf, "redirectionio - agent", NGX_PROCESS_DETACHED);
-    }
-
-    return NGX_OK;
-}
-
-static void ngx_http_redirectionio_exit_master(ngx_cycle_t *cycle) {
-    if (ngx_http_redirectionio_agent_pid != 0) {
-        // Detached need to stop it
-        if (kill(ngx_http_redirectionio_agent_pid, 15) == -1) {
-            ngx_log_error(NGX_LOG_CRIT, cycle->log, 0, "[redirectionio agent] cannot kill redirectionio agent on pid %d", ngx_http_redirectionio_agent_pid);
-        }
-    }
 }
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
@@ -388,51 +285,6 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_write_log_handler(ctx->peer.connection->write);
 
     return NGX_DECLINED;
-}
-
-static void *ngx_http_redirectionio_create_agent_conf(ngx_conf_t *cf) {
-    ngx_http_redirectionio_agent_conf_t *conf;
-
-    conf = (ngx_http_redirectionio_agent_conf_t *) ngx_pcalloc(cf->pool, sizeof(ngx_http_redirectionio_agent_conf_t));
-
-    if (conf == NULL) {
-        return NGX_CONF_ERROR;
-    }
-
-    conf->debug = NGX_CONF_UNSET_UINT;
-    conf->persist = NGX_CONF_UNSET_UINT;
-    conf->cache = NGX_CONF_UNSET_UINT;
-    conf->enable = NGX_CONF_UNSET_UINT;
-
-    return conf;
-}
-
-static char *ngx_http_redirectionio_init_agent_conf(ngx_conf_t *cf, void *child) {
-    ngx_http_redirectionio_agent_conf_t *conf = child;
-
-    ngx_conf_init_uint_value(conf->debug, NGX_HTTP_REDIRECTIONIO_OFF);
-    ngx_conf_init_uint_value(conf->persist, NGX_HTTP_REDIRECTIONIO_ON);
-    ngx_conf_init_uint_value(conf->cache, NGX_HTTP_REDIRECTIONIO_ON);
-    ngx_conf_init_uint_value(conf->enable, NGX_HTTP_REDIRECTIONIO_ON);
-
-    if (conf->instance_name.data == NULL) {
-        conf->instance_name.len = cf->cycle->hostname.len;
-        conf->instance_name.data = cf->cycle->hostname.data;
-    }
-
-    if (conf->api_host.data == NULL) {
-        conf->api_host = (ngx_str_t)ngx_string("https://api.redirection.io");
-    }
-
-    if (conf->data_directory.data == NULL) {
-        conf->data_directory = (ngx_str_t)ngx_string("/var/lib/redirectionio");
-    }
-
-    if (conf->listen.data == NULL) {
-        conf->listen = (ngx_str_t)ngx_string("127.0.0.1:10301");
-    }
-
-    return NGX_CONF_OK;
 }
 
 /* Create configuration object */
@@ -665,97 +517,4 @@ static void ngx_http_redirectionio_connection_cleanup(void *data) {
 
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json) {
     return;
-}
-
-static void ngx_redirectionio_execute_agent(ngx_cycle_t *cycle, void *data) {
-    ngx_http_redirectionio_agent_conf_t *racf = data;
-    GoUint8                             result = 0;
-    ngx_core_conf_t                     *ccf;
-    redirectionio_init_func             redirectionio_init;
-    redirectionio_set_log_handler_func  redirectionio_set_log_handler;
-    void			                    *redirectioniolib = NULL;
-
-    ccf = (ngx_core_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_core_module);
-
-    // Switch group and user if root
-    if (geteuid() == 0) {
-        if (setgid(ccf->group) == -1) {
-            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setgid(%d) failed", ccf->group);
-            exit(2);
-        }
-
-        if (initgroups(ccf->username, ccf->group) == -1) {
-            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "initgroups(%s, %d) failed", ccf->username, ccf->group);
-        }
-
-        if (setuid(ccf->user) == -1) {
-            ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "setuid(%d) failed", ccf->user);
-            exit(2);
-        }
-    }
-
-    // Other security can be added here (set cap / chdir / ....) need to see what's revelant
-    ngx_setproctitle("redirectionio - agent");
-
-    redirectioniolib = dlopen("libredirectionio.so", RTLD_NOW|RTLD_NODELETE);
-
-    if (redirectioniolib == NULL) {
-        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "cannot launch redirectionio agent: dlopen libredirectionio failed: %s", dlerror());
-        exit(2);
-    }
-
-    redirectionio_set_log_handler = dlsym(redirectioniolib, "redirectionio_set_log_handler");
-    redirectionio_init = dlsym(redirectioniolib, "redirectionio_init");
-
-    if (redirectionio_init == NULL) {
-        ngx_log_error(NGX_LOG_CRIT, cycle->log, ngx_errno, "cannot launch redirectionio agent: dlsysm redirectionio_init failed: %s", dlerror());
-
-        dlclose(redirectioniolib);
-        exit(2);
-    }
-
-    if (redirectionio_set_log_handler == NULL) {
-        ngx_log_error(NGX_LOG_WARN, cycle->log, ngx_errno, "cannot set log handler (log will be output to stderr): dlsysm redirectionio_set_log_handler failed: %s", dlerror());
-    } else {
-        (*redirectionio_set_log_handler)(ngx_redirectionio_log_handler, cycle);
-    }
-
-    result = (*redirectionio_init)(
-        ngx_str_to_go_str(racf->listen),
-        ngx_str_to_go_str(racf->instance_name),
-        ngx_str_to_go_str(racf->api_host),
-        racf->debug,
-        ngx_str_to_go_str(racf->data_directory),
-        racf->persist,
-        racf->cache
-    );
-
-    dlclose(redirectioniolib);
-
-    exit(result);
-}
-
-static void ngx_redirectionio_log_handler(unsigned char level, char* message, ngx_cycle_t *cycle) {
-    ngx_uint_t ngx_log_level;
-
-    ngx_log_level = NGX_LOG_CRIT;
-
-    // panic = 0, fatal = 1, error = 2, warn = 3, info = 4, debug = 5
-    if (level == 2) {
-        ngx_log_level = NGX_LOG_ERR;
-    }
-
-    if (level == 3) {
-        ngx_log_level = NGX_LOG_WARN;
-    }
-
-    if (level == 4) {
-        ngx_log_level = NGX_LOG_INFO;
-    }
-
-    if (level == 5) {
-        ngx_log_level = NGX_LOG_DEBUG;
-    }
-
-    ngx_log_error(ngx_log_level, cycle->log, 0, "[redirectionio agent] %s", message);
 }

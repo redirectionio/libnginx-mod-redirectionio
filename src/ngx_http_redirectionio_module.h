@@ -14,17 +14,6 @@ typedef struct {
     ngx_url_t                   pass;
 } ngx_http_redirectionio_conf_t;
 
-typedef struct {
-    ngx_uint_t  enable;
-    ngx_str_t   instance_name;
-    ngx_str_t   api_host;
-    ngx_str_t   data_directory;
-    ngx_uint_t  debug;
-    ngx_uint_t  persist;
-    ngx_uint_t  cache;
-    ngx_str_t   listen;
-} ngx_http_redirectionio_agent_conf_t;
-
 typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, cJSON *json);
 
 typedef struct {
