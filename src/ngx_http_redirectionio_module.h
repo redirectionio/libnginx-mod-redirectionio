@@ -24,11 +24,3 @@ typedef struct {
     ngx_http_redirectionio_read_handler_t   read_handler;
     ngx_http_request_t                      *subrequest;
 } ngx_http_redirectionio_ctx_t;
-
-
-typedef struct { const char *p; ptrdiff_t n; } GoString;
-typedef unsigned char GoUint8;
-
-// func redirectionio_init(listen string, instanceName string, apiHost string, debug bool, dataDirectory string, persist bool, cache bool) uint8
-typedef GoUint8 (*redirectionio_init_func)(GoString listen, GoString instanceName, GoString apiHost, GoUint8 debug, GoString dataDirectory, GoUint8 persist, GoUint8 cache);
-typedef void (*redirectionio_set_log_handler_func)(void* handler, void* log);
