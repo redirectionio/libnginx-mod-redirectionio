@@ -375,6 +375,8 @@ static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev) {
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+
+    ngx_add_timer(c->read, RIO_TIMEOUT);
     ctx->read_handler = ngx_http_redirectionio_read_match_rule_handler;
 
     ngx_http_redirectionio_protocol_send_match(c, r, &conf->project_key);
@@ -462,6 +464,14 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
     buffer = (u_char *) ngx_pcalloc(c->pool, max_size);
+
+    if (rev->timedout) {
+        ctx->read_handler(rev, NULL);
+
+        return;
+    }
+
+    ngx_del_timer(rev);
 
     for (;;) {
         readed = ngx_recv(c, &read, 1);

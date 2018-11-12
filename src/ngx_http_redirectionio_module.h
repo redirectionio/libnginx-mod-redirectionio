@@ -4,6 +4,8 @@
 #define NGX_HTTP_REDIRECTIONIO_OFF     0
 #define NGX_HTTP_REDIRECTIONIO_ON      1
 
+#define RIO_TIMEOUT 100
+
 #define ngx_str_to_go_str(ngx) (GoString){ (const char*)ngx.data, ngx.len }
 
 typedef struct {
