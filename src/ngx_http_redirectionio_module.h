@@ -4,6 +4,9 @@
 #define NGX_HTTP_REDIRECTIONIO_OFF     0
 #define NGX_HTTP_REDIRECTIONIO_ON      1
 
+#define RIO_MIN_CONNECTIONS 1
+#define RIO_KEEP_CONNECTIONS 10
+#define RIO_MAX_CONNECTIONS 100
 #define RIO_TIMEOUT 100
 
 #define ngx_str_to_go_str(ngx) (GoString){ (const char*)ngx.data, ngx.len }
@@ -14,12 +17,13 @@ typedef struct {
     ngx_str_t                   project_key;
     ngx_http_complex_value_t    *complex_target;
     ngx_url_t                   pass;
+    ngx_reslist_t               *connection_pool;
 } ngx_http_redirectionio_conf_t;
 
 typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, cJSON *json);
 
 typedef struct {
-    ngx_peer_connection_t                   peer;
+    ngx_peer_connection_t                   *peer;
     ngx_str_t                               matched_rule_id;
     ngx_str_t                               target;
     ngx_uint_t                              status;

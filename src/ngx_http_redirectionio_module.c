@@ -3,6 +3,7 @@
 #include <ngx_http.h>
 #include <dlfcn.h>
 
+#include <ngx_http_pool.h>
 #include <ngx_http_redirectionio_module.h>
 
 /**
@@ -31,13 +32,16 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
 
 static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev);
+static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev);
 
 static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json);
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
 
 static void ngx_http_redirectionio_json_cleanup(void *data);
-static void ngx_http_redirectionio_connection_cleanup(void *data);
+
+static ngx_int_t ngx_http_redirectionio_pool_construct(void **resource, void *params, ngx_pool_t *pool);
+static ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *params, ngx_pool_t *pool);
+static ngx_int_t ngx_http_redirectionio_pool_available(void *resource, void *data, ngx_pool_t *pool, ngx_int_t deferred);
 
 /**
  * Commands definitions
@@ -156,9 +160,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_int_t                       rc;
     ngx_http_redirectionio_conf_t   *conf;
-    ngx_pool_cleanup_t              *cln;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -172,34 +174,9 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
-
-    ctx->peer.sockaddr = (struct sockaddr *)&conf->pass.sockaddr;
-    ctx->peer.socklen = conf->pass.socklen;
-    ctx->peer.name = &conf->pass.url;
-    ctx->peer.get = ngx_http_redirectionio_get_connection;
-    ctx->peer.log = r->connection->log;
-    ctx->peer.log_error = NGX_ERROR_ERR;
     ctx->status = 0;
 
-    rc = ngx_event_connect_peer(&ctx->peer);
-
-    if (rc == NGX_ERROR || rc == NGX_BUSY || rc == NGX_DECLINED) {
-        if (ctx->peer.connection) {
-            ngx_close_connection(ctx->peer.connection);
-        }
-
-        return NGX_DECLINED;
-    }
-
-    ctx->peer.connection->data = r;
-    ctx->peer.connection->pool = r->connection->pool;
-    ctx->peer.connection->read->handler = ngx_http_redirectionio_read_handler;
-    ctx->peer.connection->write->handler = ngx_http_redirectionio_write_dummy_handler;
-
-    cln = ngx_pool_cleanup_add(r->pool, 0);
-    cln->handler = ngx_http_redirectionio_connection_cleanup;
-    cln->data = ctx->peer.connection;
+    ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
     return NGX_DECLINED;
 }
@@ -209,8 +186,9 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
  * Call at every request
  */
 static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) {
-    ngx_http_redirectionio_conf_t *conf;
-    ngx_http_redirectionio_ctx_t  *ctx;
+    ngx_http_redirectionio_conf_t   *conf;
+    ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_int_t                       status;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -225,12 +203,20 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         return NGX_DECLINED;
     }
 
-    if (!ctx->peer.connection) {
+    if (ctx->peer == NULL) {
+        status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available, r->pool, r);
+
+        if (status == NGX_AGAIN) {
+            return status;
+        }
+    }
+
+    if (!ctx->peer->connection) {
         return NGX_DECLINED;
     }
 
     if (ctx->matched_rule_id.data == NULL) {
-        ngx_http_redirectionio_write_match_rule_handler(ctx->peer.connection->write);
+        ngx_http_redirectionio_write_match_rule_handler(ctx->peer->connection->write);
 
         return NGX_AGAIN;
     }
@@ -268,21 +254,28 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         return NGX_DECLINED;
     }
 
-    if (conf->enable_logs == NGX_HTTP_REDIRECTIONIO_OFF) {
-        return NGX_DECLINED;
-    }
-
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     if (ctx == NULL) {
         return NGX_DECLINED;
     }
 
-    if (!ctx->peer.connection) {
+    if (!ctx->peer) {
         return NGX_DECLINED;
     }
 
-    ngx_http_redirectionio_write_log_handler(ctx->peer.connection->write);
+    if (!ctx->peer->connection) {
+        ngx_reslist_invalidate(conf->connection_pool, ctx->peer);
+
+        return NGX_DECLINED;
+    }
+
+    if (conf->enable_logs == NGX_HTTP_REDIRECTIONIO_ON) {
+        ngx_http_redirectionio_write_log_handler(ctx->peer->connection->write);
+    }
+
+//    ctx->peer->connection->data = NULL;
+    ngx_reslist_release(conf->connection_pool, ctx->peer);
 
     return NGX_DECLINED;
 }
@@ -327,6 +320,18 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     } else {
         ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
     }
+
+    conf->connection_pool = ngx_reslist_create(
+        cf->log,
+        cf->pool,
+        RIO_MIN_CONNECTIONS,
+        RIO_KEEP_CONNECTIONS,
+        RIO_MAX_CONNECTIONS,
+        RIO_TIMEOUT,
+        conf,
+        ngx_http_redirectionio_pool_construct,
+        ngx_http_redirectionio_pool_destruct
+    );
 
     return NGX_CONF_OK;
 }
@@ -397,7 +402,7 @@ static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev) {
     ngx_http_redirectionio_protocol_send_log(c, r, &conf->project_key, &ctx->matched_rule_id);
 }
 
-static void ngx_http_redirectionio_write_dummy_handler(ngx_event_t *wev) {
+static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
     return;
 }
 
@@ -521,10 +526,72 @@ static void ngx_http_redirectionio_json_cleanup(void *data) {
     cJSON_Delete((cJSON *)data);
 }
 
-static void ngx_http_redirectionio_connection_cleanup(void *data) {
-    ngx_close_connection(data);
-}
-
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json) {
     return;
+}
+
+static ngx_int_t ngx_http_redirectionio_pool_construct(void **resource, void *params, ngx_pool_t *pool) {
+    ngx_peer_connection_t           *peer;
+    ngx_int_t                       rc;
+    ngx_http_redirectionio_conf_t   *conf = (ngx_http_redirectionio_conf_t *)params;
+
+    peer = ngx_pcalloc(pool, sizeof(ngx_peer_connection_t));
+
+    if (peer == NULL) {
+        return NGX_ERROR;
+    }
+
+    peer->sockaddr = (struct sockaddr *)&conf->pass.sockaddr;
+    peer->socklen = conf->pass.socklen;
+    peer->name = &conf->pass.url;
+    peer->get = ngx_http_redirectionio_get_connection;
+    peer->log = pool->log;
+    peer->log_error = NGX_ERROR_ERR;
+
+    rc = ngx_event_connect_peer(peer);
+
+    if (rc == NGX_ERROR || rc == NGX_BUSY || rc == NGX_DECLINED) {
+        if (peer->connection) {
+            ngx_close_connection(peer->connection);
+        }
+
+        return NGX_ERROR;
+    }
+
+    peer->connection->pool = pool;
+    peer->connection->read->handler = ngx_http_redirectionio_dummy_handler;
+    peer->connection->write->handler = ngx_http_redirectionio_dummy_handler;
+
+    *resource = peer;
+
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *params, ngx_pool_t *pool) {
+    ngx_peer_connection_t   *peer = (ngx_peer_connection_t *)resource;
+    ngx_close_connection(peer->connection);
+
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_redirectionio_pool_available(void *resource, void *data, ngx_pool_t *pool, ngx_int_t deferred) {
+    ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_peer_connection_t           *peer = (ngx_peer_connection_t *)resource;
+    ngx_http_request_t              *r = (ngx_http_request_t *)data;
+
+    peer->connection->data = r;
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+
+    if (ctx == NULL) {
+        return NGX_ERROR;
+    }
+
+    ctx->peer = peer;
+    peer->connection->read->handler = ngx_http_redirectionio_read_handler;
+
+    if (deferred) {
+        ngx_http_core_run_phases(r);
+    }
+
+    return NGX_OK;
 }
