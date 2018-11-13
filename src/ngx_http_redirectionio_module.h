@@ -27,6 +27,7 @@ typedef struct {
     ngx_str_t                               matched_rule_id;
     ngx_str_t                               target;
     ngx_uint_t                              status;
+    ngx_uint_t                              connection_error;
     ngx_http_redirectionio_read_handler_t   read_handler;
     ngx_http_request_t                      *subrequest;
 } ngx_http_redirectionio_ctx_t;

@@ -175,6 +175,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
     }
 
     ctx->status = 0;
+    ctx->connection_error = 0;
 
     ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
@@ -211,7 +212,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         }
     }
 
-    if (!ctx->peer->connection) {
+    if (!ctx->peer->connection || ctx->connection_error) {
         return NGX_DECLINED;
     }
 
@@ -264,7 +265,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         return NGX_DECLINED;
     }
 
-    if (!ctx->peer->connection) {
+    if (!ctx->peer->connection || ctx->connection_error) {
         ngx_reslist_invalidate(conf->connection_pool, ctx->peer);
 
         return NGX_DECLINED;
@@ -274,7 +275,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         ngx_http_redirectionio_write_log_handler(ctx->peer->connection->write);
     }
 
-//    ctx->peer->connection->data = NULL;
+    ctx->peer->connection->data = NULL;
     ngx_reslist_release(conf->connection_pool, ctx->peer);
 
     return NGX_DECLINED;
@@ -471,6 +472,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     buffer = (u_char *) ngx_pcalloc(c->pool, max_size);
 
     if (rev->timedout) {
+        ctx->connection_error = 1;
         ctx->read_handler(rev, NULL);
 
         return;
@@ -482,18 +484,21 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         readed = ngx_recv(c, &read, 1);
 
         if (readed == -1) { /* Error */
+            ctx->connection_error = 1;
             ctx->read_handler(rev, NULL);
 
             return;
         }
 
         if (readed == 0) { /* EOF */
+            ctx->connection_error = 1;
             ctx->read_handler(rev, NULL);
 
             return;
         }
 
         if (len > max_size) { /* Too big */
+            ctx->connection_error = 1;
             ctx->read_handler(rev, NULL);
 
             return;
@@ -557,6 +562,8 @@ static ngx_int_t ngx_http_redirectionio_pool_construct(void **resource, void *pa
 
         return NGX_ERROR;
     }
+
+    ngx_tcp_nodelay(peer->connection);
 
     peer->connection->pool = pool;
     peer->connection->read->handler = ngx_http_redirectionio_dummy_handler;
