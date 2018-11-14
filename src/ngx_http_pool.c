@@ -22,6 +22,10 @@ ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_
 
     reslist = ngx_pcalloc(pool, sizeof(ngx_reslist_t));
 
+    if (reslist == NULL) {
+        return NGX_ERROR;
+    }
+
     reslist->log = log;
     reslist->pool = pool;
     reslist->ntotal = 0;
