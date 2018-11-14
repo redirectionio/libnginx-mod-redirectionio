@@ -10,21 +10,28 @@ typedef ngx_int_t (*ngx_reslist_constructor)(void **resource, void *params, ngx_
 
 typedef ngx_int_t (*ngx_reslist_destructor)(void *resource, void *params, ngx_pool_t *pool);
 
-typedef struct {
+typedef struct ngx_reslist_callback_queue_s     ngx_reslist_callback_queue_t;
+typedef struct ngx_reslist_res_s                ngx_reslist_res_t;
+typedef struct ngx_reslist_s                    ngx_reslist_t;
+
+struct ngx_reslist_callback_queue_s {
     ngx_pool_t              *pool;
     ngx_reslist_available   callback;
     void                    *data;
+    void                    *resource;
     ngx_queue_t             queue;
-} ngx_reslist_callback_queue_t;
+    ngx_event_t             event;
+    ngx_reslist_t           *reslist;
+};
 
-typedef struct {
+struct ngx_reslist_res_s {
     time_t      freed;
     void        *resource;
     ngx_queue_t queue_avail;
     ngx_queue_t queue_free;
-} ngx_reslist_res_t;
+};
 
-typedef struct {
+struct ngx_reslist_s {
     ngx_log_t                       *log;
     ngx_pool_t                      *pool;          /* the pool used in constructor and destructor calls */
     ngx_int_t                       ntotal;         /* total number of resources managed by this list */
@@ -40,7 +47,7 @@ typedef struct {
     ngx_queue_t                     res_avail_list; /* List of all resources of this pool */
     ngx_queue_t                     res_free_list;  /* List of all resources free of this pool */
     ngx_queue_t                     callback_avail_list; /* List of callbacks to calls when a resource is available */
-} ngx_reslist_t;
+};
 
 ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor);
 

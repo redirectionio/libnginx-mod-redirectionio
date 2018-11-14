@@ -6,6 +6,11 @@
 #include <ngx_http_pool.h>
 #include <ngx_http_redirectionio_module.h>
 
+#define RIO_MIN_CONNECTIONS 0
+#define RIO_KEEP_CONNECTIONS 3
+#define RIO_MAX_CONNECTIONS 10
+#define RIO_TIMEOUT 100
+
 /**
  * List of values for boolean
  */
@@ -204,11 +209,19 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         return NGX_DECLINED;
     }
 
+    if (ctx->connection_error) {
+        return NGX_DECLINED;
+    }
+
     if (ctx->peer == NULL) {
         status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available, r->pool, r);
 
         if (status == NGX_AGAIN) {
             return status;
+        }
+
+        if (status != NGX_OK) {
+            return NGX_DECLINED;
         }
     }
 
@@ -334,7 +347,7 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         ngx_http_redirectionio_pool_construct,
         ngx_http_redirectionio_pool_destruct
     ) != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Cannot create connection pool for redirectionio, disabling module");
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "[redirectionio] cannot create connection pool for redirectionio, disabling module");
 
         conf->enable = NGX_HTTP_REDIRECTIONIO_OFF;
     }
@@ -478,6 +491,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
     if (rev->timedout) {
         ctx->connection_error = 1;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
         ctx->read_handler(rev, NULL);
 
         return;
@@ -490,6 +504,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
         if (readed == -1) { /* Error */
             ctx->connection_error = 1;
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection error while reading, skipping module for this request");
             ctx->read_handler(rev, NULL);
 
             return;
@@ -497,6 +512,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
         if (readed == 0) { /* EOF */
             ctx->connection_error = 1;
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection terminated while reading, skipping module for this request");
             ctx->read_handler(rev, NULL);
 
             return;
@@ -504,6 +520,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
         if (len > max_size) { /* Too big */
             ctx->connection_error = 1;
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] message too big while reading, skipping module for this request");
             ctx->read_handler(rev, NULL);
 
             return;
@@ -588,18 +605,34 @@ static ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *para
 
 static ngx_int_t ngx_http_redirectionio_pool_available(void *resource, void *data, ngx_pool_t *pool, ngx_int_t deferred) {
     ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_peer_connection_t           *peer = (ngx_peer_connection_t *)resource;
     ngx_http_request_t              *r = (ngx_http_request_t *)data;
 
-    peer->connection->data = r;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     if (ctx == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] no context, skipping module for this request");
+
+        if (deferred) {
+            ngx_http_core_run_phases(r);
+        }
+
         return NGX_ERROR;
     }
 
-    ctx->peer = peer;
-    peer->connection->read->handler = ngx_http_redirectionio_read_handler;
+    if (resource == NULL) {
+        ctx->connection_error = 1;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot acquire connection, retrieving resource timed out, skipping module for this request");
+
+        if (deferred) {
+            ngx_http_core_run_phases(r);
+        }
+
+        return NGX_ERROR;
+    }
+
+    ctx->peer = (ngx_peer_connection_t *)resource;
+    ctx->peer->connection->data = r;
+    ctx->peer->connection->read->handler = ngx_http_redirectionio_read_handler;
 
     if (deferred) {
         ngx_http_core_run_phases(r);

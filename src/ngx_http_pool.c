@@ -8,9 +8,8 @@ static ngx_int_t create_resource(ngx_reslist_t *reslist, ngx_reslist_res_t **ret
 static ngx_int_t destroy_resource(ngx_reslist_t *reslist, ngx_reslist_res_t *res);
 static void reslist_cleanup(void *data);
 static ngx_int_t reslist_maintain(ngx_reslist_t *reslist);
-static void ngx_reslist_defer_maintain_handler(ngx_event_t *event);
-static ngx_int_t ngx_reslist_defer_maintain(ngx_reslist_t *reslist);
-static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data, ngx_pool_t *pool, ngx_int_t deferred);
+static void ngx_reslist_acquire_event_handler(ngx_event_t *event);
+static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_callback_queue_t *cq, ngx_int_t deferred);
 
 ngx_int_t ngx_reslist_maintain(ngx_reslist_t *reslist) {
     return reslist_maintain(reslist);
@@ -52,21 +51,32 @@ ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_
 }
 
 ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, ngx_pool_t *pool, void *data) {
-    if (reslist->nidle > 0 || reslist->ntotal < reslist->max) {
-        return ngx_reslist_call_acquire_resource(reslist, callback, data, pool, 0);
-    }
+    ngx_reslist_callback_queue_t *cq = ngx_pcalloc(pool, sizeof(ngx_reslist_callback_queue_t));
 
-    ngx_reslist_callback_queue_t *callback_available = ngx_pcalloc(pool, sizeof(ngx_reslist_callback_queue_t));
-
-    if (callback_available == NULL) {
+    if (cq == NULL) {
         return NGX_ERROR;
     }
 
-    callback_available->callback = callback;
-    callback_available->pool = pool;
-    callback_available->data = data;
+    cq->callback = callback;
+    cq->pool = pool;
+    cq->data = data;
+    cq->reslist = reslist;
+    cq->event.data = cq;
+    cq->event.log = reslist->log;
+    cq->event.index = NGX_INVALID_INDEX;
+    cq->event.handler = ngx_reslist_acquire_event_handler;
+    cq->event.ready = 1;
+    cq->event.posted = 0;
 
-    ngx_queue_insert_head(&reslist->callback_avail_list, &callback_available->queue);
+    if (reslist->nidle > 0 || reslist->ntotal < reslist->max) {
+        return ngx_reslist_call_acquire_resource(reslist, cq, 0);
+    }
+
+    ngx_queue_insert_head(&reslist->callback_avail_list, &cq->queue);
+
+    if (reslist->timeout) {
+        ngx_add_timer(&cq->event, reslist->timeout);
+    }
 
     return NGX_AGAIN;
 }
@@ -79,7 +89,7 @@ ngx_int_t ngx_reslist_release(ngx_reslist_t *reslist, void *resource) {
     push_resource(reslist, res, 0);
 
     // Deffer maintain
-    ngx_reslist_defer_maintain(reslist);
+    ngx_reslist_maintain(reslist);
 
     return NGX_OK;
 }
@@ -91,7 +101,7 @@ ngx_int_t ngx_reslist_invalidate(ngx_reslist_t *reslist, void *resource) {
     reslist->ntotal--;
 
     // Deffer maintain
-    ngx_reslist_defer_maintain(reslist);
+    ngx_reslist_maintain(reslist);
 
     return rv;
 }
@@ -168,8 +178,8 @@ static void reslist_cleanup(void *data) {
 static ngx_int_t reslist_maintain(ngx_reslist_t *reslist) {
     ngx_int_t                       rv;
     ngx_reslist_res_t               *res;
-    ngx_reslist_callback_queue_t    *callback_queue;
-    int                             created_one = 0;
+    ngx_reslist_callback_queue_t    *cq;
+    int                             used_one = 0;
 
     /* Check if we need to create more resources, and if we are allowed to. */
     while (reslist->nidle < reslist->min && reslist->ntotal < reslist->max) {
@@ -186,19 +196,19 @@ static ngx_int_t reslist_maintain(ngx_reslist_t *reslist) {
         if (rv != NGX_OK) {
             return rv;
         }
-
-        created_one++;
     }
 
     while (!ngx_queue_empty(&reslist->callback_avail_list) && (reslist->nidle > 0 || reslist->ntotal < reslist->max)) {
-        callback_queue = ngx_queue_data(ngx_queue_last(&reslist->callback_avail_list), ngx_reslist_callback_queue_t, queue);
-        ngx_queue_remove(&callback_queue->queue);
+        cq = ngx_queue_data(ngx_queue_last(&reslist->callback_avail_list), ngx_reslist_callback_queue_t, queue);
+        ngx_queue_remove(&cq->queue);
+        ngx_reslist_call_acquire_resource(reslist, cq, 1);
 
-        rv = ngx_reslist_call_acquire_resource(reslist, callback_queue->callback, callback_queue->data, callback_queue->pool, 1);
+        used_one++;
+    }
 
-        if (rv != NGX_OK) {
-            return rv;
-        }
+    // Only clear connections when nothing has been used to speed up under heavy load
+    if (used_one) {
+        return NGX_OK;
     }
 
     while (reslist->nidle > reslist->keep && reslist->nidle > 0) {
@@ -218,30 +228,20 @@ static ngx_int_t reslist_maintain(ngx_reslist_t *reslist) {
     return NGX_OK;
 }
 
-static void ngx_reslist_defer_maintain_handler(ngx_event_t *event) {
-    ngx_reslist_t   *reslist = (ngx_reslist_t *)event->data;
-    ngx_reslist_maintain(reslist);
+static void ngx_reslist_acquire_event_handler(ngx_event_t *event) {
+    ngx_reslist_callback_queue_t *cq = (ngx_reslist_callback_queue_t *)event->data;
 
-    free(event);
+    if (event->timedout) {
+        (cq->callback)(NULL, cq->data, cq->pool, 1);
+
+        return;
+    }
+
+    ngx_del_timer(event);
+    (cq->callback)(cq->resource, cq->data, cq->pool, 1);
 }
 
-static ngx_int_t ngx_reslist_defer_maintain(ngx_reslist_t *reslist) {
-    ngx_event_t     *event;
-
-    event = malloc(sizeof(ngx_event_t));
-    event->data = reslist;
-    event->log = reslist->log;
-    event->index = NGX_INVALID_INDEX;
-    event->handler = ngx_reslist_defer_maintain_handler;
-    event->ready = 1;
-    event->posted = 0;
-
-    ngx_post_event(event, &ngx_posted_events);
-
-    return NGX_OK;
-}
-
-static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data, ngx_pool_t *pool, ngx_int_t deferred) {
+static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_callback_queue_t *cq, ngx_int_t deferred) {
     ngx_reslist_res_t   *res;
 
     if (ngx_queue_empty(&reslist->res_avail_list)) {
@@ -255,5 +255,13 @@ static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_r
         free_container(reslist, res);
     }
 
-    return (callback)(res->resource, data, pool, deferred);
+    cq->resource = res->resource;
+
+    if (!deferred) {
+        return (cq->callback)(cq->resource, cq->data, cq->pool, 0);
+    }
+
+    ngx_post_event(&cq->event, &ngx_posted_events);
+
+    return NGX_OK;
 }
