@@ -1,22 +1,31 @@
 #include <ngx_http_pool.h>
 
-static ngx_int_t ngx_reslist_defer_maintain(ngx_reslist_t *reslist);
-static ngx_int_t ngx_reslist_create_resource(ngx_reslist_t *reslist);
-static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data, ngx_pool_t *pool, ngx_int_t deferred);
-static ngx_int_t ngx_reslist_delete_resource(ngx_reslist_t *reslist);
-static ngx_int_t ngx_reslist_delete_free_resource(ngx_reslist_t *reslist, resource_queue_t *rq);
-static ngx_int_t ngx_reslist_delete_avail_resource(ngx_reslist_t *reslist, resource_queue_t *rq);
+static ngx_reslist_res_t *pop_resource(ngx_reslist_t *reslist);
+static ngx_int_t push_resource(ngx_reslist_t *reslist, ngx_reslist_res_t *resource, int new);
+static ngx_reslist_res_t *get_container(ngx_reslist_t *reslist);
+static void free_container(ngx_reslist_t *reslist, ngx_reslist_res_t *container);
+static ngx_int_t create_resource(ngx_reslist_t *reslist, ngx_reslist_res_t **ret_res);
+static ngx_int_t destroy_resource(ngx_reslist_t *reslist, ngx_reslist_res_t *res);
+static void reslist_cleanup(void *data);
+static ngx_int_t reslist_maintain(ngx_reslist_t *reslist);
 static void ngx_reslist_defer_maintain_handler(ngx_event_t *event);
+static ngx_int_t ngx_reslist_defer_maintain(ngx_reslist_t *reslist);
+static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data, ngx_pool_t *pool, ngx_int_t deferred);
 
-ngx_reslist_t* ngx_reslist_create(ngx_log_t *log, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor) {
-    ngx_reslist_t *reslist;
+ngx_int_t ngx_reslist_maintain(ngx_reslist_t *reslist) {
+    return reslist_maintain(reslist);
+}
+
+ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor) {
+    ngx_reslist_t       *reslist;
+    ngx_pool_cleanup_t  *cln;
 
     reslist = ngx_pcalloc(pool, sizeof(ngx_reslist_t));
 
     reslist->log = log;
     reslist->pool = pool;
-    reslist->navail = 0;
-    reslist->nfree = 0;
+    reslist->ntotal = 0;
+    reslist->nidle = 0;
     reslist->min = min;
     reslist->keep = keep;
     reslist->max = max;
@@ -29,13 +38,17 @@ ngx_reslist_t* ngx_reslist_create(ngx_log_t *log, ngx_pool_t *pool, ngx_int_t mi
     ngx_queue_init(&reslist->res_free_list);
     ngx_queue_init(&reslist->callback_avail_list);
 
-    // @TODO Add cleanup fonction
+    cln = ngx_pool_cleanup_add(pool, 0);
+    cln->handler = reslist_cleanup;
+    cln->data = reslist;
 
-    return reslist;
+    *rreslist = reslist;
+
+    return NGX_OK;
 }
 
 ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, ngx_pool_t *pool, void *data) {
-    if (reslist->nfree > 0 || reslist->navail < reslist->max) {
+    if (reslist->nidle > 0 || reslist->ntotal < reslist->max) {
         return ngx_reslist_call_acquire_resource(reslist, callback, data, pool, 0);
     }
 
@@ -51,115 +64,161 @@ ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available call
 
     ngx_queue_insert_head(&reslist->callback_avail_list, &callback_available->queue);
 
-    // Deffer maintain
-    ngx_reslist_defer_maintain(reslist);
-
     return NGX_AGAIN;
 }
 
 ngx_int_t ngx_reslist_release(ngx_reslist_t *reslist, void *resource) {
-    resource_queue_t    *rq;
-    ngx_queue_t         *q;
+    ngx_reslist_res_t   *res;
 
-    if (resource == NULL) {
-        return NGX_OK;
-    }
-
-    // Call callbacks for each free resource or create the resource if max not reached (and free the structure)
-    for (q = ngx_queue_head(&reslist->res_avail_list); q != ngx_queue_sentinel(&reslist->res_avail_list); q = ngx_queue_next(q)) {
-        rq = ngx_queue_data(q, resource_queue_t, queue_avail);
-
-        if (rq->resource == resource) {
-            break;
-        }
-
-        rq = NULL;
-    }
-
-    if (rq == NULL) {
-        return NGX_ERROR;
-    }
-
-    ngx_queue_insert_head(&reslist->res_free_list, &rq->queue_free);
-    reslist->nfree++;
+    res = get_container(reslist);
+    res->resource = resource;
+    push_resource(reslist, res, 0);
 
     // Deffer maintain
     ngx_reslist_defer_maintain(reslist);
 
-    return 0;
+    return NGX_OK;
 }
 
 ngx_int_t ngx_reslist_invalidate(ngx_reslist_t *reslist, void *resource) {
-    ngx_int_t           status;
-    resource_queue_t    *rq;
-    ngx_queue_t         *q;
+    ngx_int_t           rv;
 
-    if (resource == NULL) {
-        return NGX_OK;
-    }
-
-    // Call callbacks for each free resource or create the resource if max not reached (and free the structure)
-    for (q = ngx_queue_head(&reslist->res_avail_list); q != ngx_queue_sentinel(&reslist->res_avail_list); q = ngx_queue_next(q)) {
-        rq = ngx_queue_data(q, resource_queue_t, queue_avail);
-
-        if (rq->resource == resource) {
-            break;
-        }
-
-        rq = NULL;
-    }
-
-    if (rq == NULL) {
-        return NGX_ERROR;
-    }
-
-    status = ngx_reslist_delete_avail_resource(reslist, rq);
-
-    if (status != NGX_OK) {
-        return status;
-    }
+    rv = reslist->destructor(resource, reslist->params, reslist->pool);
+    reslist->ntotal--;
 
     // Deffer maintain
     ngx_reslist_defer_maintain(reslist);
 
+    return rv;
+}
+
+static ngx_reslist_res_t *pop_resource(ngx_reslist_t *reslist) {
+    ngx_reslist_res_t *res;
+
+    res = ngx_queue_data(ngx_queue_head(&reslist->res_avail_list), ngx_reslist_res_t, queue_avail);
+
+    ngx_queue_remove(&res->queue_avail);
+    reslist->nidle--;
+
+    return res;
+}
+
+static ngx_int_t push_resource(ngx_reslist_t *reslist, ngx_reslist_res_t *resource, int new) {
+    ngx_queue_insert_head(&reslist->res_avail_list, &resource->queue_avail);
+
+    reslist->nidle++;
+
+    if (new) {
+        reslist->ntotal++;
+    }
+
     return NGX_OK;
 }
 
-ngx_int_t ngx_reslist_maintain(ngx_reslist_t *reslist) {
-    ngx_int_t                       status;
-    ngx_queue_t                     *q;
-    ngx_reslist_callback_queue_t    *callback_queue;
+static ngx_reslist_res_t *get_container(ngx_reslist_t *reslist) {
+    ngx_reslist_res_t *res;
 
-    while (reslist->navail < reslist->min) {
-        status = ngx_reslist_create_resource(reslist);
+    if (!ngx_queue_empty(&reslist->res_free_list)) {
+        res = ngx_queue_data(ngx_queue_head(&reslist->res_free_list), ngx_reslist_res_t, queue_free);
 
-        if (status != NGX_OK) {
-            return status;
-        }
+        ngx_queue_remove(&res->queue_free);
+    } else {
+        res = ngx_pcalloc(reslist->pool, sizeof(ngx_reslist_res_t));
     }
 
-    while (!ngx_queue_empty(&reslist->callback_avail_list) && reslist->navail < reslist->max) {
-        q = ngx_queue_last(&reslist->callback_avail_list);
-        callback_queue = ngx_queue_data(q, ngx_reslist_callback_queue_t, queue);
+    return res;
+}
+
+static void free_container(ngx_reslist_t *reslist, ngx_reslist_res_t *container) {
+    ngx_queue_insert_tail(&reslist->res_free_list, &container->queue_free);
+}
+
+static ngx_int_t create_resource(ngx_reslist_t *reslist, ngx_reslist_res_t **ret_res) {
+    ngx_int_t           rv;
+    ngx_reslist_res_t   *res;
+
+    res = get_container(reslist);
+
+    rv = (reslist->constructor)(&res->resource, reslist->params, reslist->pool);
+    *ret_res = res;
+
+    return rv;
+}
+
+static ngx_int_t destroy_resource(ngx_reslist_t *reslist, ngx_reslist_res_t *res) {
+    return (reslist->destructor)(res->resource, reslist->params, reslist->pool);
+}
+
+static void reslist_cleanup(void *data) {
+    ngx_reslist_t *rl   = data;
+    ngx_reslist_res_t   *res;
+
+    while (rl->nidle > 0) {
+        res = pop_resource(rl);
+        rl->ntotal--;
+        destroy_resource(rl, res);
+        free_container(rl, res);
+    }
+}
+
+static ngx_int_t reslist_maintain(ngx_reslist_t *reslist) {
+    ngx_int_t                       rv;
+    ngx_reslist_res_t               *res;
+    ngx_reslist_callback_queue_t    *callback_queue;
+    int                             created_one = 0;
+
+    /* Check if we need to create more resources, and if we are allowed to. */
+    while (reslist->nidle < reslist->min && reslist->ntotal < reslist->max) {
+        rv = create_resource(reslist, &res);
+
+        if (rv != NGX_OK) {
+            free_container(reslist, res);
+
+            return rv;
+        }
+
+        rv = push_resource(reslist, res, 1);
+
+        if (rv != NGX_OK) {
+            return rv;
+        }
+
+        created_one++;
+    }
+
+    while (!ngx_queue_empty(&reslist->callback_avail_list) && (reslist->nidle > 0 || reslist->ntotal < reslist->max)) {
+        callback_queue = ngx_queue_data(ngx_queue_last(&reslist->callback_avail_list), ngx_reslist_callback_queue_t, queue);
         ngx_queue_remove(&callback_queue->queue);
 
-        status = ngx_reslist_call_acquire_resource(reslist, callback_queue->callback, callback_queue->data, callback_queue->pool, 1);
+        rv = ngx_reslist_call_acquire_resource(reslist, callback_queue->callback, callback_queue->data, callback_queue->pool, 1);
 
-        if (status != NGX_OK) {
-            return status;
+        if (rv != NGX_OK) {
+            return rv;
         }
     }
 
-    // Remove not needed resources
-    while (!ngx_queue_empty(&reslist->res_free_list) && reslist->navail > reslist->keep) {
-        status = ngx_reslist_delete_resource(reslist);
+    while (reslist->nidle > reslist->keep && reslist->nidle > 0) {
+        res = ngx_queue_data(ngx_queue_last(&reslist->res_avail_list), ngx_reslist_res_t, queue_avail);
+        ngx_queue_remove(&res->queue_avail);
+        reslist->nidle--;
+        reslist->ntotal--;
 
-        if (status != NGX_OK) {
-            return status;
+        rv = destroy_resource(reslist, res);
+        free_container(reslist, res);
+
+        if (rv != NGX_OK) {
+            return rv;
         }
     }
 
     return NGX_OK;
+}
+
+static void ngx_reslist_defer_maintain_handler(ngx_event_t *event) {
+    ngx_reslist_t   *reslist = (ngx_reslist_t *)event->data;
+    ngx_reslist_maintain(reslist);
+
+    free(event);
 }
 
 static ngx_int_t ngx_reslist_defer_maintain(ngx_reslist_t *reslist) {
@@ -178,88 +237,19 @@ static ngx_int_t ngx_reslist_defer_maintain(ngx_reslist_t *reslist) {
     return NGX_OK;
 }
 
-static ngx_int_t ngx_reslist_create_resource(ngx_reslist_t *reslist) {
-    ngx_int_t                   status;
-    resource_queue_t            *rq;
-
-    rq = ngx_pcalloc(reslist->pool, sizeof(resource_queue_t));
-
-    if (rq == NULL) {
-        return NGX_ERROR;
-    }
-
-    status = (reslist->constructor)(&rq->resource, reslist->params, reslist->pool);
-
-    if (status != NGX_OK) {
-        return status;
-    }
-
-    // Add this queue to the res and free list
-    ngx_queue_insert_head(&reslist->res_avail_list, &rq->queue_avail);
-    ngx_queue_insert_head(&reslist->res_free_list, &rq->queue_free);
-
-    reslist->navail++;
-    reslist->nfree++;
-
-    return NGX_OK;
-}
-
 static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data, ngx_pool_t *pool, ngx_int_t deferred) {
-    ngx_queue_t         *q;
-    resource_queue_t    *rq;
-    ngx_int_t           status;
+    ngx_reslist_res_t   *res;
 
-    // Create a resource if none are free
-    if (ngx_queue_empty(&reslist->res_free_list)) {
-        status = ngx_reslist_create_resource(reslist);
-
-        if (status != NGX_OK) {
-            return status;
+    if (ngx_queue_empty(&reslist->res_avail_list)) {
+        if (create_resource(reslist, &res) == NGX_OK) {
+            reslist->ntotal++;
         }
+
+        free_container(reslist, res);
+    } else {
+        res = pop_resource(reslist);
+        free_container(reslist, res);
     }
 
-    q = ngx_queue_last(&reslist->res_free_list);
-    rq = ngx_queue_data(q, resource_queue_t, queue_free);
-
-    ngx_queue_remove(&rq->queue_free);
-    reslist->nfree--;
-
-    return (callback)(rq->resource, data, pool, deferred);
-}
-
-static ngx_int_t ngx_reslist_delete_resource(ngx_reslist_t *reslist) {
-    ngx_queue_t         *q;
-    resource_queue_t    *rq;
-
-    if (ngx_queue_empty(&reslist->res_free_list)) {
-        return NGX_OK;
-    }
-
-    q = ngx_queue_last(&reslist->res_free_list);
-    rq = ngx_queue_data(q, resource_queue_t, queue_free);
-
-    ngx_reslist_delete_free_resource(reslist, rq);
-
-    return ngx_reslist_delete_avail_resource(reslist, rq);
-}
-
-static ngx_int_t ngx_reslist_delete_free_resource(ngx_reslist_t *reslist, resource_queue_t *rq) {
-    ngx_queue_remove(&rq->queue_free);
-    reslist->nfree--;
-
-    return NGX_OK;
-}
-
-static ngx_int_t ngx_reslist_delete_avail_resource(ngx_reslist_t *reslist, resource_queue_t *rq) {
-    ngx_queue_remove(&rq->queue_avail);
-    reslist->navail--;
-
-    return (reslist->destructor)(rq->resource, reslist->params, reslist->pool);
-}
-
-static void ngx_reslist_defer_maintain_handler(ngx_event_t *event) {
-    ngx_reslist_t   *reslist = (ngx_reslist_t *)event->data;
-    ngx_reslist_maintain(reslist);
-
-    free(event);
+    return (callback)(res->resource, data, pool, deferred);
 }

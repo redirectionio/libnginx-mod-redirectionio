@@ -322,7 +322,8 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
     }
 
-    conf->connection_pool = ngx_reslist_create(
+    if(ngx_reslist_create(
+        &conf->connection_pool,
         cf->log,
         cf->pool,
         RIO_MIN_CONNECTIONS,
@@ -332,7 +333,11 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         conf,
         ngx_http_redirectionio_pool_construct,
         ngx_http_redirectionio_pool_destruct
-    );
+    ) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Cannot create connection pool for redirectionio, disabling module");
+
+        conf->enable = NGX_HTTP_REDIRECTIONIO_OFF;
+    }
 
     return NGX_CONF_OK;
 }
