@@ -7,7 +7,7 @@
 #include <ngx_http_redirectionio_module.h>
 
 #define RIO_MIN_CONNECTIONS 0
-#define RIO_KEEP_CONNECTIONS 3
+#define RIO_KEEP_CONNECTIONS 10
 #define RIO_MAX_CONNECTIONS 10
 #define RIO_TIMEOUT 100
 
@@ -621,7 +621,7 @@ static ngx_int_t ngx_http_redirectionio_pool_available(void *resource, void *dat
 
     if (resource == NULL) {
         ctx->connection_error = 1;
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot acquire connection, retrieving resource timed out, skipping module for this request");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot acquire connection, retrieving resource from pool timed out, skipping module for this request");
 
         if (deferred) {
             ngx_http_core_run_phases(r);

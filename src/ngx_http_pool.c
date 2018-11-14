@@ -232,12 +232,12 @@ static void ngx_reslist_acquire_event_handler(ngx_event_t *event) {
     ngx_reslist_callback_queue_t *cq = (ngx_reslist_callback_queue_t *)event->data;
 
     if (event->timedout) {
+        ngx_queue_remove(&cq->queue);
         (cq->callback)(NULL, cq->data, cq->pool, 1);
 
         return;
     }
 
-    ngx_del_timer(event);
     (cq->callback)(cq->resource, cq->data, cq->pool, 1);
 }
 
@@ -261,6 +261,8 @@ static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_r
         return (cq->callback)(cq->resource, cq->data, cq->pool, 0);
     }
 
+    // remove timeout here
+    ngx_del_timer(&cq->event);
     ngx_post_event(&cq->event, &ngx_posted_events);
 
     return NGX_OK;
