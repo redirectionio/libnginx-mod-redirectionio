@@ -4,18 +4,17 @@
 #include <ngx_core.h>
 #include <ngx_event_posted.h>
 
-typedef ngx_int_t (*ngx_reslist_available)(void *resource, void *data, ngx_pool_t *pool, ngx_int_t deferred);
+typedef struct ngx_reslist_callback_queue_s     ngx_reslist_callback_queue_t;
+typedef struct ngx_reslist_res_s                ngx_reslist_res_t;
+typedef struct ngx_reslist_s                    ngx_reslist_t;
+
+typedef ngx_int_t (*ngx_reslist_available)(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 
 typedef ngx_int_t (*ngx_reslist_constructor)(void **resource, void *params, ngx_pool_t *pool);
 
 typedef ngx_int_t (*ngx_reslist_destructor)(void *resource, void *params, ngx_pool_t *pool);
 
-typedef struct ngx_reslist_callback_queue_s     ngx_reslist_callback_queue_t;
-typedef struct ngx_reslist_res_s                ngx_reslist_res_t;
-typedef struct ngx_reslist_s                    ngx_reslist_t;
-
 struct ngx_reslist_callback_queue_s {
-    ngx_pool_t              *pool;
     ngx_reslist_available   callback;
     void                    *data;
     void                    *resource;
@@ -51,7 +50,7 @@ struct ngx_reslist_s {
 
 ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor);
 
-ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, ngx_pool_t *pool, void *data);
+ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data);
 
 ngx_int_t ngx_reslist_release(ngx_reslist_t *reslist, void *resource);
 
