@@ -51,6 +51,9 @@ static ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t
 
 static void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error);
 
+static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
+static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r);
+
 /**
  * Commands definitions
  */
@@ -134,6 +137,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
+    // Log handler -> log phase
     log_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
 
     if (log_handler == NULL) {
@@ -156,6 +160,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 
     *redirect_handler = ngx_http_redirectionio_redirect_handler;
 
+    // Create context handler -> pre access phase
     create_ctx_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
 
     if (create_ctx_handler == NULL) {
@@ -164,6 +169,10 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     }
 
     *create_ctx_handler = ngx_http_redirectionio_create_ctx_handler;
+
+    // Filters
+    ngx_http_next_header_filter = ngx_http_top_header_filter;
+    ngx_http_top_header_filter = ngx_http_redirectionio_match_on_response_status_header_filter;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->cycle->log, 0, "redirectionio: init(): return OK");
 
@@ -186,13 +195,15 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx = (ngx_http_redirectionio_ctx_t *) ngx_pcalloc(r->pool, sizeof(ngx_http_redirectionio_ctx_t));
 
         if (ctx == NULL) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            return NGX_DECLINED;
         }
 
         ctx->status = 0;
         ctx->connection_error = 0;
         ctx->wait_for_connection = 0;
         ctx->wait_for_match = 0;
+        ctx->match_on_response_status = 0;
+        ctx->is_redirected = 0;
 
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
     }
@@ -263,7 +274,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
 
     ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
 
-    if (ctx->status == 0) {
+    if (ctx->status == 0 || ctx->match_on_response_status != 0) {
         return NGX_DECLINED;
     }
 
@@ -282,6 +293,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     r->headers_out.status = ctx->status;
+    ctx->is_redirected = 1;
 
     return ctx->status;
 }
@@ -478,6 +490,7 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
     }
 
     cJSON *status = cJSON_GetObjectItem(json, "status_code");
+    cJSON *match_on_response_status = cJSON_GetObjectItem(json, "match_on_response_status");
     cJSON *location = cJSON_GetObjectItem(json, "location");
     cJSON *matched_rule = cJSON_GetObjectItem(json, "matched_rule");
     cJSON *rule_id = NULL;
@@ -490,6 +503,7 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
         ctx->matched_rule_id.data = (u_char *)"";
         ctx->matched_rule_id.len = 0;
         ctx->status = 0;
+        ctx->match_on_response_status = 0;
 
         ngx_http_core_run_phases(r);
 
@@ -501,6 +515,11 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
     ctx->target.data = (u_char *)location->valuestring;
     ctx->target.len = strlen(location->valuestring);
     ctx->status = status->valueint;
+    ctx->match_on_response_status = 0;
+
+    if (match_on_response_status != NULL && match_on_response_status->type != cJSON_NULL) {
+        ctx->match_on_response_status = match_on_response_status->valueint;
+    }
 
     ngx_http_core_run_phases(r);
 }
@@ -724,4 +743,46 @@ static void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_
     }
 
     ngx_reslist_release(reslist, resource);
+}
+
+static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
+    ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_http_redirectionio_conf_t   *conf;
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+
+    if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
+        return ngx_http_next_header_filter(r);
+    }
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+
+    // Skip if no need to redirect
+    if (ctx == NULL || ctx->status == 0 || ctx->match_on_response_status == 0 || ctx->is_redirected) {
+        return ngx_http_next_header_filter(r);
+    }
+
+    if (r->headers_out.status != ctx->match_on_response_status) {
+        return ngx_http_next_header_filter(r);
+    }
+
+    if (ctx->status != 410) {
+        // Set target
+        r->headers_out.location = ngx_list_push(&r->headers_out.headers);
+
+        if (r->headers_out.location == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        r->headers_out.location->hash = 1;
+        ngx_str_set(&r->headers_out.location->key, "Location");
+        r->headers_out.location->value.len = ctx->target.len;
+        r->headers_out.location->value.data = ctx->target.data;
+    }
+
+    r->headers_out.status = ctx->status;
+    // Avoid loop if we redirect on the same status as we match
+    ctx->is_redirected = 1;
+
+    return ngx_http_special_response_handler(r, ctx->status);
 }

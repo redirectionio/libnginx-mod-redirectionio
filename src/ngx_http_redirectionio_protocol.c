@@ -1,6 +1,6 @@
 #include <ngx_http_redirectionio_protocol.h>
 
-const char COMMAND_MATCH_NAME[] = "MATCH";
+const char COMMAND_MATCH_NAME[] = "MATCH_WITH_RESPONSE";
 const char COMMAND_MATCH_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\" }";
 const char COMMAND_LOG_NAME[] = "LOG";
 const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\" }";
