@@ -5,7 +5,7 @@
 #   https://github.com/openresty/nginx-devel-utils/blob/master/ngx-build
 # the resulting nginx is located at ./work/nginx/sbin/nginx
 root=`pwd`
-version=${1:-1.13.6}
+version=${1:-1.9.15}
 home=~
 
 # the ngx-build script is from https://github.com/openresty/openresty-devel-utils
@@ -29,7 +29,6 @@ ngx-build $version \
     --with-debug \
     --with-pcre-jit \
     --with-ipv6 \
-    --with-http_ssl_module \
     --with-http_stub_status_module \
     --with-http_realip_module \
     --with-http_auth_request_module \
@@ -49,10 +48,7 @@ ngx-build $version \
     --with-http_sub_module \
     --with-http_xslt_module=dynamic \
     --with-mail=dynamic \
-    --with-mail_ssl_module \
     --with-stream=dynamic \
-    --with-stream_ssl_module \
-    --with-stream_ssl_preread_module \
-    --add-dynamic-module=/home/rio/clients/nginx-redirectionio-module \
+    --add-module=/home/rio/clients/nginx-redirectionio-module \
     $opts \
     --with-debug

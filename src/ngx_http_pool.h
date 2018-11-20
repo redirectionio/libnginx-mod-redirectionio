@@ -10,9 +10,9 @@ typedef struct ngx_reslist_s                    ngx_reslist_t;
 
 typedef ngx_int_t (*ngx_reslist_available)(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 
-typedef ngx_int_t (*ngx_reslist_constructor)(void **resource, void *params, ngx_pool_t *pool);
+typedef ngx_int_t (*ngx_reslist_constructor)(void **resource, void *params);
 
-typedef ngx_int_t (*ngx_reslist_destructor)(void *resource, void *params, ngx_pool_t *pool);
+typedef ngx_int_t (*ngx_reslist_destructor)(void *resource, void *params);
 
 struct ngx_reslist_callback_queue_s {
     ngx_reslist_available   callback;

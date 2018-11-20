@@ -78,6 +78,9 @@ ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available call
         ngx_add_timer(&cq->event, reslist->timeout);
     }
 
+    // Defer maintain
+    ngx_reslist_maintain(reslist);
+
     return NGX_AGAIN;
 }
 
@@ -88,7 +91,7 @@ ngx_int_t ngx_reslist_release(ngx_reslist_t *reslist, void *resource) {
     res->resource = resource;
     push_resource(reslist, res, 0);
 
-    // Deffer maintain
+    // Defer maintain
     ngx_reslist_maintain(reslist);
 
     return NGX_OK;
@@ -97,10 +100,10 @@ ngx_int_t ngx_reslist_release(ngx_reslist_t *reslist, void *resource) {
 ngx_int_t ngx_reslist_invalidate(ngx_reslist_t *reslist, void *resource) {
     ngx_int_t           rv;
 
-    rv = reslist->destructor(resource, reslist->params, reslist->pool);
+    rv = reslist->destructor(resource, reslist->params);
     reslist->ntotal--;
 
-    // Deffer maintain
+    // Defer maintain
     ngx_reslist_maintain(reslist);
 
     return rv;
@@ -153,14 +156,14 @@ static ngx_int_t create_resource(ngx_reslist_t *reslist, ngx_reslist_res_t **ret
 
     res = get_container(reslist);
 
-    rv = (reslist->constructor)(&res->resource, reslist->params, reslist->pool);
+    rv = (reslist->constructor)(&res->resource, reslist->params);
     *ret_res = res;
 
     return rv;
 }
 
 static ngx_int_t destroy_resource(ngx_reslist_t *reslist, ngx_reslist_res_t *res) {
-    return (reslist->destructor)(res->resource, reslist->params, reslist->pool);
+    return (reslist->destructor)(res->resource, reslist->params);
 }
 
 static void reslist_cleanup(void *data) {
