@@ -356,7 +356,6 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 
             if(ngx_reslist_create(
                 &conf->connection_pool,
-                cf->log,
                 cf->pool,
                 RIO_MIN_CONNECTIONS,
                 RIO_KEEP_CONNECTIONS,
@@ -374,7 +373,6 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     } else {
         if(ngx_reslist_create(
             &conf->connection_pool,
-            cf->log,
             cf->pool,
             RIO_MIN_CONNECTIONS,
             RIO_KEEP_CONNECTIONS,
@@ -456,8 +454,6 @@ static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
 }
 
 static void ngx_http_redirectionio_read_event_dummy_handler(ngx_event_t *rev) {
-    ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] try to read at an invalid moment %p", rev);
-
     return;
 }
 
@@ -603,7 +599,7 @@ static ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) 
     ngx_int_t                           rc;
     ngx_http_redirectionio_conf_t       *conf = (ngx_http_redirectionio_conf_t *)params;
 
-    pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, conf->connection_pool->log);
+    pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, ngx_cycle->log);
 
     if (pool == NULL) {
         return NGX_ERROR;

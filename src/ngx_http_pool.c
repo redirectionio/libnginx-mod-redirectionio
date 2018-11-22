@@ -15,7 +15,7 @@ ngx_int_t ngx_reslist_maintain(ngx_reslist_t *reslist) {
     return reslist_maintain(reslist);
 }
 
-ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor) {
+ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor) {
     ngx_reslist_t       *reslist;
     ngx_pool_cleanup_t  *cln;
 
@@ -25,7 +25,6 @@ ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_
         return NGX_ERROR;
     }
 
-    reslist->log = log;
     reslist->pool = pool;
     reslist->ntotal = 0;
     reslist->nidle = 0;
@@ -51,7 +50,7 @@ ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_
 }
 
 ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data) {
-    ngx_reslist_callback_queue_t *cq = ngx_memalign(NGX_POOL_ALIGNMENT, sizeof(ngx_reslist_callback_queue_t), reslist->log);
+    ngx_reslist_callback_queue_t *cq = ngx_memalign(NGX_POOL_ALIGNMENT, sizeof(ngx_reslist_callback_queue_t), ngx_cycle->log);
     ngx_memzero(cq, sizeof(ngx_reslist_callback_queue_t));
 
     if (cq == NULL) {
@@ -62,7 +61,7 @@ ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available call
     cq->data = data;
     cq->reslist = reslist;
     cq->event.data = cq;
-    cq->event.log = reslist->log;
+    cq->event.log = ngx_cycle->log;
     cq->event.index = NGX_INVALID_INDEX;
     cq->event.handler = ngx_reslist_acquire_event_handler;
     cq->event.ready = 1;

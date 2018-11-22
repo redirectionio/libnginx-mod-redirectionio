@@ -48,7 +48,7 @@ struct ngx_reslist_s {
     ngx_queue_t                     callback_avail_list; /* List of callbacks to calls when a resource is available */
 };
 
-ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor);
+ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_pool_t *pool, ngx_int_t min, ngx_int_t keep, ngx_int_t max, ngx_msec_t timeout, void *params, ngx_reslist_constructor constructor, ngx_reslist_destructor destructor);
 
 ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data);
 
