@@ -256,7 +256,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         }
 
         ctx->wait_for_match = 1;
-        ngx_http_redirectionio_write_match_rule_handler(ctx->resource->peer.connection.write);
+        ngx_http_redirectionio_write_match_rule_handler(ctx->resource->peer.connection->write);
 
         return NGX_AGAIN;
     }
@@ -537,8 +537,6 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
     if (rev->timer_set) {
         ngx_del_timer(rev);
-    } else {
-        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "No timer for this read event %p", rev);
     }
 
     for (;;) {
