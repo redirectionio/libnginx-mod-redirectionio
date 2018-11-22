@@ -51,7 +51,7 @@ ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_log_t *log, ngx_pool_
 }
 
 ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data) {
-    ngx_reslist_callback_queue_t *cq = malloc(sizeof(ngx_reslist_callback_queue_t));
+    ngx_reslist_callback_queue_t *cq = ngx_memalign(NGX_POOL_ALIGNMENT, sizeof(ngx_reslist_callback_queue_t), reslist->log);
     ngx_memzero(cq, sizeof(ngx_reslist_callback_queue_t));
 
     if (cq == NULL) {
@@ -236,14 +236,10 @@ static void ngx_reslist_acquire_event_handler(ngx_event_t *event) {
 
     if (event->timedout) {
         ngx_queue_remove(&cq->queue);
-        (cq->callback)(cq->reslist, NULL, cq->data, 1);
-        free(cq);
-
-        return;
     }
 
     (cq->callback)(cq->reslist, cq->resource, cq->data, 1);
-    free(cq);
+    ngx_free(cq);
 }
 
 static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_reslist_callback_queue_t *cq, ngx_int_t deferred) {
@@ -265,13 +261,16 @@ static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_r
 
     if (!deferred) {
         rv = (cq->callback)(reslist, cq->resource, cq->data, 0);
-        free(cq);
+        ngx_free(cq);
 
         return rv;
     }
 
     // remove timeout here
-    ngx_del_timer(&cq->event);
+    if (cq->event.timer_set) {
+        ngx_del_timer(&cq->event);
+    }
+
     ngx_post_event(&cq->event, &ngx_posted_events);
 
     return NGX_OK;

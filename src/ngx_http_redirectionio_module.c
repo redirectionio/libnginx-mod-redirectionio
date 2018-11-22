@@ -146,7 +146,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 #ifdef NGX_HTTP_PRECONTENT_PHASE
     redirect_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
 #else
-    redirect_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
+    redirect_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
 #endif
 
     if (redirect_handler == NULL) {
@@ -180,16 +180,22 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         return NGX_DECLINED;
     }
 
-    ctx = (ngx_http_redirectionio_ctx_t *) ngx_pcalloc(r->pool, sizeof(ngx_http_redirectionio_ctx_t));
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     if (ctx == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        ctx = (ngx_http_redirectionio_ctx_t *) ngx_pcalloc(r->pool, sizeof(ngx_http_redirectionio_ctx_t));
+
+        if (ctx == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        ctx->status = 0;
+        ctx->connection_error = 0;
+        ctx->wait_for_connection = 0;
+        ctx->wait_for_match = 0;
+
+        ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
     }
-
-    ctx->status = 0;
-    ctx->connection_error = 0;
-
-    ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
     return NGX_DECLINED;
 }
@@ -221,9 +227,15 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     if (ctx->resource == NULL) {
+        if (ctx->wait_for_connection) {
+            return NGX_AGAIN;
+        }
+
         status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available, r);
 
         if (status == NGX_AGAIN) {
+            ctx->wait_for_connection = 1;
+
             return status;
         }
 
@@ -239,7 +251,12 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     if (ctx->matched_rule_id.data == NULL) {
-        ngx_http_redirectionio_write_match_rule_handler(ctx->resource->peer.connection->write);
+        if (ctx->wait_for_match) {
+            return NGX_AGAIN;
+        }
+
+        ctx->wait_for_match = 1;
+        ngx_http_redirectionio_write_match_rule_handler(ctx->resource->peer.connection.write);
 
         return NGX_AGAIN;
     }
@@ -298,7 +315,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
 
     ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available_log_handler, log);
 
-    return NGX_OK;
+    return NGX_DECLINED;
 }
 
 /* Create configuration object */
@@ -327,12 +344,49 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     if (conf->pass.url.data == NULL) {
         if (prev->pass.url.data) {
             conf->pass = prev->pass;
+            // Limit number of connection pool
+            conf->connection_pool = prev->connection_pool;
         } else {
+            // Should create new connection pool
             conf->pass.url = (ngx_str_t)ngx_string("127.0.0.1:10301");
 
             if (ngx_parse_url(cf->pool, &conf->pass) != NGX_OK) {
                 return NGX_CONF_ERROR;
             }
+
+            if(ngx_reslist_create(
+                &conf->connection_pool,
+                cf->log,
+                cf->pool,
+                RIO_MIN_CONNECTIONS,
+                RIO_KEEP_CONNECTIONS,
+                RIO_MAX_CONNECTIONS,
+                RIO_TIMEOUT,
+                conf,
+                ngx_http_redirectionio_pool_construct,
+                ngx_http_redirectionio_pool_destruct
+            ) != NGX_OK) {
+                ngx_log_error(NGX_LOG_ERR, cf->log, 0, "[redirectionio] cannot create connection pool for redirectionio, disabling module");
+
+                conf->enable = NGX_HTTP_REDIRECTIONIO_OFF;
+            }
+        }
+    } else {
+        if(ngx_reslist_create(
+            &conf->connection_pool,
+            cf->log,
+            cf->pool,
+            RIO_MIN_CONNECTIONS,
+            RIO_KEEP_CONNECTIONS,
+            RIO_MAX_CONNECTIONS,
+            RIO_TIMEOUT,
+            conf,
+            ngx_http_redirectionio_pool_construct,
+            ngx_http_redirectionio_pool_destruct
+        ) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, cf->log, 0, "[redirectionio] cannot create connection pool for redirectionio, disabling module");
+
+            conf->enable = NGX_HTTP_REDIRECTIONIO_OFF;
         }
     }
 
@@ -342,22 +396,6 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
     }
 
-    if(ngx_reslist_create(
-        &conf->connection_pool,
-        cf->log,
-        cf->pool,
-        RIO_MIN_CONNECTIONS,
-        RIO_KEEP_CONNECTIONS,
-        RIO_MAX_CONNECTIONS,
-        RIO_TIMEOUT,
-        conf,
-        ngx_http_redirectionio_pool_construct,
-        ngx_http_redirectionio_pool_destruct
-    ) != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "[redirectionio] cannot create connection pool for redirectionio, disabling module");
-
-        conf->enable = NGX_HTTP_REDIRECTIONIO_OFF;
-    }
 
     return NGX_CONF_OK;
 }
@@ -418,11 +456,7 @@ static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
 }
 
 static void ngx_http_redirectionio_read_event_dummy_handler(ngx_event_t *rev) {
-    ngx_log_error(NGX_LOG_ERR, rev->log, 0, "[redirectionio] try to read at an invalid moment");
-
-    if (rev->data) {
-        ngx_close_connection(rev->data);
-    }
+    ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] try to read at an invalid moment %p", rev);
 
     return;
 }
@@ -501,14 +535,18 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         return;
     }
 
-    ngx_del_timer(rev);
+    if (rev->timer_set) {
+        ngx_del_timer(rev);
+    } else {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "No timer for this read event %p", rev);
+    }
 
     for (;;) {
         readed = ngx_recv(c, &read, 1);
 
         if (readed == -1) { /* Error */
             ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection error while reading, skipping module for this request");
+            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading, skipping module for this request");
             ctx->read_handler(rev, NULL);
 
             return;
@@ -516,7 +554,7 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
         if (readed == 0) { /* EOF */
             ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection terminated while reading, skipping module for this request");
+            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection terminated while reading, skipping module for this request");
             ctx->read_handler(rev, NULL);
 
             return;

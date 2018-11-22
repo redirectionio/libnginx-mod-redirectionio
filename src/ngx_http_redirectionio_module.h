@@ -31,4 +31,6 @@ typedef struct {
     ngx_uint_t                              connection_error;
     ngx_http_redirectionio_read_handler_t   read_handler;
     ngx_http_request_t                      *subrequest;
+    ngx_uint_t                              wait_for_connection;
+    ngx_uint_t                              wait_for_match;
 } ngx_http_redirectionio_ctx_t;
