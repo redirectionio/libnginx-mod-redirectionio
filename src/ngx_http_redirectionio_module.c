@@ -786,3 +786,11 @@ static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(n
 
     return ngx_http_special_response_handler(r, ctx->status);
 }
+
+static ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
+    // Send headers to agent
+
+    // Read call should call core_run_phases
+
+    return NGX_AGAIN;
+}
