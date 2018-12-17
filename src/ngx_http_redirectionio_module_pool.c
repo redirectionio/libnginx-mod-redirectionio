@@ -161,8 +161,6 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
     buffer = (u_char *) ngx_pcalloc(c->pool, max_size);
 
-    ngx_log_stderr(0, "Read Handler 1");
-
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
 
@@ -171,8 +169,6 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
         return;
     }
-
-    ngx_log_stderr(0, "Read Handler 2");
 
     if (rev->timer_set) {
         ngx_del_timer(rev);
@@ -212,11 +208,9 @@ static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
             *buffer = '\0';
             cJSON *json = cJSON_Parse((char *)(buffer - len));
-    ngx_log_stderr(0, "Read Handler 3");
 
             cln = ngx_pool_cleanup_add(r->pool, 0);
             cln->handler = ngx_http_redirectionio_json_cleanup;
-    ngx_log_stderr(0, "Read Handler 4");
             cln->data = json;
 
             ctx->read_handler(rev, json);

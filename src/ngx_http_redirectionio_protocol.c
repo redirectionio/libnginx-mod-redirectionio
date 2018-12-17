@@ -133,11 +133,9 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
     query = cJSON_CreateObject();
     headers = cJSON_CreateArray();
 
-    ngx_log_stderr(0, "Header Filter 7");
     cJSON_AddItemToObject(query, "project_id", cJSON_CreateString((const char *)project_key->data));
     cJSON_AddItemToObject(query, "rule_id", cJSON_CreateString((const char *)rule_id->data));
     cJSON_AddItemToObject(query, "headers", headers);
-    ngx_log_stderr(0, "Header Filter 8");
 
     part = &r->headers_out.headers.part;
     h = part->elts;
@@ -164,16 +162,11 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
 
         cJSON_AddItemToArray(headers, header);
     }
-    ngx_log_stderr(0, "Header Filter 9");
 
     //@TODO Memory clean
 
     dst = cJSON_PrintUnformatted(query);
 
-    ngx_log_stderr(0, "Header Filter 10 %s", dst);
-
     ngx_send(c, (u_char *)COMMAND_FILTER_HEADER_NAME, sizeof(COMMAND_FILTER_HEADER_NAME));
     ngx_send(c, (u_char *)dst, ngx_strlen(dst) + 1);
-
-    ngx_log_stderr(0, "Header Filter 11 %s", dst);
 }

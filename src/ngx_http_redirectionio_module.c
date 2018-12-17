@@ -153,8 +153,6 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
-    ngx_log_stderr(0, "Create CTX 1");
-
     if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
         return NGX_DECLINED;
     }
