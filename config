@@ -11,6 +11,8 @@ ngx_addon_name=ngx_http_redirectionio_module
 
 _HTTP_REDIRECTIONIO_SRCS="\
   $ngx_addon_dir/src/ngx_http_redirectionio_module.c \
+  $ngx_addon_dir/src/ngx_http_redirectionio_module_filter.c \
+  $ngx_addon_dir/src/ngx_http_redirectionio_module_pool.c \
   $ngx_addon_dir/src/ngx_http_json.c \
   $ngx_addon_dir/src/ngx_http_redirectionio_protocol.c \
   $ngx_addon_dir/src/ngx_http_pool.c \

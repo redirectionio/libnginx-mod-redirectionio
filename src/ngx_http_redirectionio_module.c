@@ -1,15 +1,4 @@
-#include <ngx_config.h>
-#include <ngx_core.h>
-#include <ngx_http.h>
-#include <dlfcn.h>
-
-#include <ngx_http_pool.h>
 #include <ngx_http_redirectionio_module.h>
-
-#define RIO_MIN_CONNECTIONS 0
-#define RIO_KEEP_CONNECTIONS 10
-#define RIO_MAX_CONNECTIONS 10
-#define RIO_TIMEOUT 10000
 
 /**
  * List of values for boolean
@@ -24,42 +13,16 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
-static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
 
-ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
-
-static void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
-
 static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_write_filter_headers_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_read_event_dummy_handler(ngx_event_t *wev);
 
 static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json);
 static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev, cJSON *json);
-static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
-
-static void ngx_http_redirectionio_json_cleanup(void *data);
-
-static ngx_int_t ngx_http_redirectionio_pool_construct(void **resource, void *params);
-static ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *params);
-static ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
-static ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
-
-static void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error);
-
-static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r);
-static ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r);
-
-static ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
-
-static ngx_http_output_header_filter_pt     ngx_http_next_header_filter;
-static ngx_http_output_body_filter_pt       ngx_http_next_body_filter;
 
 /**
  * Commands definitions
@@ -123,18 +86,13 @@ ngx_module_t ngx_http_redirectionio_module = {
     NGX_HTTP_MODULE, /* module type */
     NULL, /* init master */
     NULL, /* init module */
-    ngx_http_redirectionio_init_worker, /* init process */
+    NULL, /* init process */
     NULL, /* init thread */
     NULL, /* exit thread */
     NULL, /* exit process */
     NULL, /* exit master */
     NGX_MODULE_V1_PADDING
 };
-
-static ngx_int_t ngx_http_redirectionio_init_worker(ngx_cycle_t *cycle) {
-    // @TODO Init connections here
-    return NGX_OK;
-}
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     ngx_http_core_main_conf_t           *cmcf;
@@ -216,6 +174,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->wait_for_match = 0;
         ctx->match_on_response_status = 0;
         ctx->is_redirected = 0;
+        ctx->body_buffer = NULL;
 
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
     }
@@ -458,11 +417,6 @@ static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, 
     return NGX_CONF_OK;
 }
 
-
-ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data) {
-    return NGX_OK;
-}
-
 static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_connection_t                *c;
@@ -478,14 +432,6 @@ static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev) {
     ctx->read_handler = ngx_http_redirectionio_read_match_rule_handler;
 
     ngx_http_redirectionio_protocol_send_match(c, r, &conf->project_key);
-}
-
-static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
-    return;
-}
-
-static void ngx_http_redirectionio_read_event_dummy_handler(ngx_event_t *rev) {
-    return;
 }
 
 static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json) {
@@ -553,402 +499,8 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
     ngx_http_core_run_phases(r);
 }
 
-static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev, cJSON *json) {
-    // @TODO set headers to response / call next filter handler
-    ngx_log_stderr(0, "Read Filters Handler");
-
-    //    ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
-    //
-    //    ctx->wait_for_connection = 0;
-    //    ctx->resource = NULL;
-}
-
-static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
-    ngx_connection_t                *c;
-    ngx_http_request_t              *r;
-    ngx_http_redirectionio_ctx_t    *ctx;
-    u_char                          *buffer;
-    u_char                          read;
-    size_t                          len = 0;
-    ngx_uint_t                      max_size = 8192;
-    ssize_t                         readed;
-    ngx_pool_cleanup_t              *cln;
-
-    c = rev->data;
-    r = c->data;
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-    ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_read_event_dummy_handler;
-    buffer = (u_char *) ngx_pcalloc(c->pool, max_size);
-
-    if (rev->timedout) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
-
-        ctx->connection_error = 1;
-        ctx->read_handler(rev, NULL);
-
-        return;
-    }
-
-    if (rev->timer_set) {
-        ngx_del_timer(rev);
-    }
-
-    for (;;) {
-        readed = ngx_recv(c, &read, 1);
-
-        if (readed == -1) { /* Error */
-            ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
-
-            return;
-        }
-
-        if (readed == 0) { /* EOF */
-            ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection terminated while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
-
-            return;
-        }
-
-        if (len > max_size) { /* Too big */
-            ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] message too big while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
-
-            return;
-        }
-
-        if (read == '\0') { /* Message readed, push it to the current handler */
-            if (len == 0) {
-                continue;
-            }
-
-            *buffer = '\0';
-            cJSON *json = cJSON_Parse((char *)(buffer - len));
-
-            cln = ngx_pool_cleanup_add(r->pool, 0);
-            cln->handler = ngx_http_redirectionio_json_cleanup;
-            cln->data = json;
-
-            ctx->read_handler(rev, json);
-
-            return;
-        }
-
-        len++;
-        *buffer = read;
-        buffer++;
-    }
-}
-
-static void ngx_http_redirectionio_json_cleanup(void *data) {
-    cJSON_Delete((cJSON *)data);
-}
-
-static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json) {
+void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json) {
     return;
 }
 
-static ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
-    ngx_pool_t                          *pool;
-    ngx_http_redirectionio_resource_t   *resource;
-    ngx_int_t                           rc;
-    ngx_http_redirectionio_conf_t       *conf = (ngx_http_redirectionio_conf_t *)params;
 
-    pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, ngx_cycle->log);
-
-    if (pool == NULL) {
-        return NGX_ERROR;
-    }
-
-    resource = ngx_pcalloc(pool, sizeof(ngx_http_redirectionio_resource_t));
-
-    if (resource == NULL) {
-        return NGX_ERROR;
-    }
-
-    resource->pool = pool;
-    resource->peer.sockaddr = (struct sockaddr *)&conf->pass.sockaddr;
-    resource->peer.socklen = conf->pass.socklen;
-    resource->peer.name = &conf->pass.url;
-    resource->peer.get = ngx_http_redirectionio_get_connection;
-    resource->peer.log = pool->log;
-    resource->peer.log_error = NGX_ERROR_ERR;
-
-    rc = ngx_event_connect_peer(&resource->peer);
-
-    if (rc == NGX_ERROR || rc == NGX_BUSY || rc == NGX_DECLINED) {
-        if (resource->peer.connection) {
-            ngx_close_connection(resource->peer.connection);
-        }
-
-        return NGX_ERROR;
-    }
-
-    int tcp_nodelay = 1;
-
-    if (setsockopt(resource->peer.connection->fd, IPPROTO_TCP, TCP_NODELAY, (const void *) &tcp_nodelay, sizeof(int)) == -1) {
-        ngx_log_error(NGX_LOG_ALERT, pool->log, ngx_socket_errno,  "setsockopt(TCP_NODELAY) %V failed, ignored", &resource->peer.connection->addr_text);
-    }
-
-    resource->peer.connection->pool = pool;
-    resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
-    resource->peer.connection->write->handler = ngx_http_redirectionio_dummy_handler;
-
-    *rp = resource;
-
-    return NGX_OK;
-}
-
-static ngx_int_t ngx_http_redirectionio_pool_destruct(void *rp, void *params) {
-    ngx_http_redirectionio_resource_t   *resource = (ngx_http_redirectionio_resource_t *)rp;
-
-    ngx_close_connection(resource->peer.connection);
-    ngx_destroy_pool(resource->pool);
-
-    return NGX_OK;
-}
-
-static ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred) {
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_http_request_t              *r = (ngx_http_request_t *)data;
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-
-    if (ctx == NULL) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] no context, skipping module for this request");
-
-        if (deferred) {
-            ngx_http_core_run_phases(r);
-        }
-
-        return NGX_ERROR;
-    }
-
-    if (resource == NULL) {
-        ctx->connection_error = 1;
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot acquire connection, retrieving resource from pool timed out, skipping module for this request");
-
-        if (deferred) {
-            ngx_http_core_run_phases(r);
-        }
-
-        return NGX_ERROR;
-    }
-
-    ctx->resource = (ngx_http_redirectionio_resource_t *)resource;
-    ctx->resource->peer.connection->data = r;
-    ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_read_handler;
-
-    if (deferred) {
-        ngx_http_core_run_phases(r);
-    }
-
-    return NGX_OK;
-}
-
-static ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred) {
-    ngx_http_redirectionio_log_t    *log = (ngx_http_redirectionio_log_t *)data;
-    ngx_peer_connection_t           *peer = (ngx_peer_connection_t *)resource;
-
-    if (peer == NULL) {
-        ngx_http_redirectionio_protocol_free_log(log);
-
-        return NGX_ERROR;
-    }
-
-    ngx_http_redirectionio_protocol_send_log(peer->connection, log);
-    ngx_http_redirectionio_protocol_free_log(log);
-    ngx_http_redirectionio_release_resource(reslist, resource, 0);
-
-    return NGX_OK;
-}
-
-static void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error) {
-    if (in_error) {
-        ngx_reslist_invalidate(reslist, resource);
-
-        return;
-    }
-
-    resource->usage++;
-
-    if (resource->usage > NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE) {
-        ngx_reslist_invalidate(reslist, resource);
-
-        return;
-    }
-
-    ngx_reslist_release(reslist, resource);
-}
-
-static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_http_redirectionio_conf_t   *conf;
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    ngx_log_stderr(0, "Status Filter 1");
-
-    if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
-        return ngx_http_redirectionio_headers_filter(r);
-    }
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-
-    // Skip if no need to redirect
-    if (ctx == NULL || ctx->status == 0 || ctx->match_on_response_status == 0 || ctx->is_redirected) {
-        return ngx_http_redirectionio_headers_filter(r);
-    }
-
-    if (r->headers_out.status != ctx->match_on_response_status) {
-        return ngx_http_redirectionio_headers_filter(r);
-    }
-
-    if (ctx->status != 410) {
-        // Set target
-        r->headers_out.location = ngx_list_push(&r->headers_out.headers);
-
-        if (r->headers_out.location == NULL) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-
-        r->headers_out.location->hash = 1;
-        ngx_str_set(&r->headers_out.location->key, "Location");
-        r->headers_out.location->value.len = ctx->target.len;
-        r->headers_out.location->value.data = ctx->target.data;
-    }
-
-    r->headers_out.status = ctx->status;
-    // Avoid loop if we redirect on the same status as we match
-    ctx->is_redirected = 1;
-
-    return ngx_http_special_response_handler(r, ctx->status);
-}
-
-static ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_http_redirectionio_conf_t   *conf;
-    ngx_int_t                       status;
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    ngx_log_stderr(0, "Header Filter 1");
-
-    if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
-        return ngx_http_next_header_filter(r);
-    }
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-
-    // Skip if no need to filters headers (no context, no rule, no filter on headers, or already filtered headers)
-    if (ctx == NULL || ctx->status == 0 || ctx->should_filter_headers == 0 || ctx->headers_filtered) {
-        return ngx_http_next_header_filter(r);
-    }
-
-    ngx_log_stderr(0, "Header Filter 2");
-
-    // Get connection
-    if (ctx->resource == NULL) {
-        if (ctx->wait_for_connection) {
-            return NGX_AGAIN;
-        }
-
-        status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available, r);
-
-        if (status == NGX_AGAIN) {
-            ctx->wait_for_connection = 1;
-
-            return status;
-        }
-
-        if (status != NGX_OK) {
-            return ngx_http_next_header_filter(r);
-        }
-    }
-
-    ngx_log_stderr(0, "Header Filter 3");
-
-    // Check connection
-    if (ctx->connection_error) {
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
-
-        ctx->wait_for_connection = 0;
-        ctx->resource = NULL;
-        ctx->connection_error = 0;
-
-        return ngx_http_next_header_filter(r);
-    }
-
-    ngx_log_stderr(0, "Header Filter 4");
-
-    if (ctx->wait_for_header_filtering) {
-        return NGX_AGAIN;
-    }
-
-    ngx_log_stderr(0, "Header Filter 5");
-    ngx_http_redirectionio_write_filter_headers_handler(ctx->resource->peer.connection->write);
-    ctx->wait_for_header_filtering = 1;
-
-    return NGX_AGAIN;
-}
-
-static void ngx_http_redirectionio_write_filter_headers_handler(ngx_event_t *wev) {
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_connection_t                *c;
-    ngx_http_request_t              *r;
-    ngx_http_redirectionio_conf_t   *conf;
-
-    c = wev->data;
-    r = c->data;
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    ngx_add_timer(c->read, RIO_TIMEOUT);
-    ctx->read_handler = ngx_http_redirectionio_read_filter_headers_handler;
-    ngx_log_stderr(0, "Header Filter 6");
-
-    ngx_http_redirectionio_protocol_send_filter_header(c, r, &conf->project_key, &ctx->matched_rule_id);
-}
-
-static ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
-    ngx_http_redirectionio_ctx_t    *ctx;
-    ngx_http_redirectionio_conf_t   *conf;
-    ngx_int_t                       status;
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    ngx_log_stderr(0, "Body Filter 1");
-
-    if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
-        return ngx_http_next_body_filter(r, in);
-    }
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-
-    // Skip if no need to filters body and headers (no context, no rule)
-    if (ctx == NULL || ctx->status == 0) {
-    ngx_log_stderr(0, "Body Filter WTF");
-        return ngx_http_next_body_filter(r, in);
-    }
-
-    // Check if we are waiting for filtering headers or connection
-    if (ctx->wait_for_header_filtering || ctx->wait_for_connection) {
-        ngx_log_stderr(0, "Body Filter WAIT");
-        return NGX_AGAIN;
-    }
-
-    // Skip if no need to filters body (no filter on body, or already filtered headers)
-    if (ctx->should_filter_body == 0 || ctx->body_filtered) {
-    ngx_log_stderr(0, "Body Filter NO NEED");
-        return ngx_http_next_body_filter(r, in);
-    }
-
-    // Otherwise stream the body to redirection io agent
-
-    ngx_log_stderr(0, "Body Filter 2");
-
-    return ngx_http_next_body_filter(r, in);
-}

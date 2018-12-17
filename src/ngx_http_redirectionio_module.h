@@ -1,8 +1,21 @@
+#ifndef redirectionio_module_h
+#define redirectionio_module_h
+
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
+#include <dlfcn.h>
+#include <ngx_http_pool.h>
 #include <ngx_http_redirectionio_protocol.h>
 #include <ngx_http_json.h>
 
 #define NGX_HTTP_REDIRECTIONIO_OFF     0
 #define NGX_HTTP_REDIRECTIONIO_ON      1
+
+#define RIO_MIN_CONNECTIONS 0
+#define RIO_KEEP_CONNECTIONS 10
+#define RIO_MAX_CONNECTIONS 10
+#define RIO_TIMEOUT 10000
 
 #define NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE   500
 
@@ -42,4 +55,25 @@ typedef struct {
     ngx_uint_t                              wait_for_match;
     ngx_uint_t                              wait_for_header_filtering;
     ngx_uint_t                              wait_for_body_filtering;
+
+    ngx_chain_t                             *body_buffer;
 } ngx_http_redirectionio_ctx_t;
+
+void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
+
+ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r);
+ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r);
+
+ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
+
+ngx_http_output_header_filter_pt    ngx_http_next_header_filter;
+ngx_http_output_body_filter_pt      ngx_http_next_body_filter;
+ngx_module_t                        ngx_http_redirectionio_module;
+
+ngx_int_t ngx_http_redirectionio_pool_construct(void **resource, void *params);
+ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *params);
+ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
+ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
+void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error);
+
+#endif
