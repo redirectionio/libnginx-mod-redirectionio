@@ -4,6 +4,7 @@ const char COMMAND_MATCH_NAME[] = "MATCH_WITH_RESPONSE";
 const char COMMAND_MATCH_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\" }";
 const char COMMAND_LOG_NAME[] = "LOG";
 const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\" }";
+const char COMMAND_FILTER_HEADER_NAME[] = "FILTER_HEADER";
 
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest) {
     dest->len = src->len;
@@ -117,4 +118,62 @@ void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log)
     free(log->location.data);
 
     free(log);
+}
+
+void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id) {
+    ssize_t             wlen;
+    const char          *dst;
+    ngx_str_t           v;
+    ngx_str_t           encoded_headers = ngx_null_string;
+    ngx_list_part_t     *part;
+    ngx_table_elt_t     *h;
+    ngx_uint_t          i;
+    cJSON               *query, *headers, *header;
+
+    query = cJSON_CreateObject();
+    headers = cJSON_CreateArray();
+
+    ngx_log_stderr(0, "Header Filter 7");
+    cJSON_AddItemToObject(query, "project_id", cJSON_CreateString((const char *)project_key->data));
+    cJSON_AddItemToObject(query, "rule_id", cJSON_CreateString((const char *)rule_id->data));
+    cJSON_AddItemToObject(query, "headers", headers);
+    ngx_log_stderr(0, "Header Filter 8");
+
+    part = &r->headers_out.headers.part;
+    h = part->elts;
+
+    for (i = 0; /* void */ ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            h = part->elts;
+            i = 0;
+        }
+
+        // Not used skip it
+        if (h[i].hash == 0) {
+            continue;
+        }
+
+        header = cJSON_CreateObject();
+        cJSON_AddItemToObject(header, "name", cJSON_CreateString((const char *)h[i].key.data));
+        cJSON_AddItemToObject(header, "value", cJSON_CreateString((const char *)h[i].value.data));
+
+        cJSON_AddItemToArray(headers, header);
+    }
+    ngx_log_stderr(0, "Header Filter 9");
+
+    //@TODO Memory clean
+
+    dst = cJSON_PrintUnformatted(query);
+
+    ngx_log_stderr(0, "Header Filter 10 %s", dst);
+
+    ngx_send(c, (u_char *)COMMAND_FILTER_HEADER_NAME, sizeof(COMMAND_FILTER_HEADER_NAME));
+    ngx_send(c, (u_char *)dst, ngx_strlen(dst) + 1);
+
+    ngx_log_stderr(0, "Header Filter 11 %s", dst);
 }

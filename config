@@ -18,8 +18,9 @@ _HTTP_REDIRECTIONIO_SRCS="\
 
 if [ $ngx_found = yes ]; then
 	if test -n "$ngx_module_link"; then
-        ngx_module_type=HTTP
+        ngx_module_type=HTTP_FILTER
         ngx_module_name=$ngx_addon_name
+        ngx_module_order="$ngx_module_name ngx_http_write_filter"
         ngx_module_deps=
         ngx_module_srcs="$_HTTP_REDIRECTIONIO_SRCS"
         ngx_module_libs="$ngx_feature_libs"

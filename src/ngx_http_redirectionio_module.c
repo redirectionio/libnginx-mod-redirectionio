@@ -9,7 +9,7 @@
 #define RIO_MIN_CONNECTIONS 0
 #define RIO_KEEP_CONNECTIONS 10
 #define RIO_MAX_CONNECTIONS 10
-#define RIO_TIMEOUT 100
+#define RIO_TIMEOUT 10000
 
 /**
  * List of values for boolean
@@ -36,10 +36,12 @@ ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void 
 static void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
 
 static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev);
+static void ngx_http_redirectionio_write_filter_headers_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_read_event_dummy_handler(ngx_event_t *wev);
 
 static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json);
+static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev, cJSON *json);
 static void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
 
 static void ngx_http_redirectionio_json_cleanup(void *data);
@@ -51,8 +53,13 @@ static ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t
 
 static void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error);
 
-static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r);
+static ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r);
+
+static ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
+
+static ngx_http_output_header_filter_pt     ngx_http_next_header_filter;
+static ngx_http_output_body_filter_pt       ngx_http_next_body_filter;
 
 /**
  * Commands definitions
@@ -174,6 +181,9 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     ngx_http_next_header_filter = ngx_http_top_header_filter;
     ngx_http_top_header_filter = ngx_http_redirectionio_match_on_response_status_header_filter;
 
+    ngx_http_next_body_filter = ngx_http_top_body_filter;
+    ngx_http_top_body_filter = ngx_http_redirectionio_body_filter;
+
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->cycle->log, 0, "redirectionio: init(): return OK");
 
     return NGX_OK;
@@ -184,6 +194,8 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
     ngx_http_redirectionio_conf_t   *conf;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+
+    ngx_log_stderr(0, "Create CTX 1");
 
     if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
         return NGX_DECLINED;
@@ -258,6 +270,10 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     if (ctx->connection_error) {
         ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
 
+        ctx->wait_for_connection = 0;
+        ctx->resource = NULL;
+        ctx->connection_error = 0;
+
         return NGX_DECLINED;
     }
 
@@ -273,6 +289,9 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
+
+    ctx->wait_for_connection = 0;
+    ctx->resource = NULL;
 
     if (ctx->status == 0 || ctx->match_on_response_status != 0) {
         return NGX_DECLINED;
@@ -493,6 +512,8 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
     cJSON *match_on_response_status = cJSON_GetObjectItem(json, "match_on_response_status");
     cJSON *location = cJSON_GetObjectItem(json, "location");
     cJSON *matched_rule = cJSON_GetObjectItem(json, "matched_rule");
+    cJSON *should_filter_headers = cJSON_GetObjectItem(json, "should_filter_headers");
+    cJSON *should_filter_body = cJSON_GetObjectItem(json, "should_filter_body");
     cJSON *rule_id = NULL;
 
     if (matched_rule != NULL && matched_rule->type != cJSON_NULL) {
@@ -510,6 +531,14 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
         return;
     }
 
+    if (should_filter_headers != NULL && should_filter_headers->type == cJSON_True) {
+        ctx->should_filter_headers = 1;
+    }
+
+    if (should_filter_body != NULL && should_filter_body->type == cJSON_True) {
+        ctx->should_filter_body = 1;
+    }
+
     ctx->matched_rule_id.data = (u_char *)rule_id->valuestring;
     ctx->matched_rule_id.len = strlen(rule_id->valuestring);
     ctx->target.data = (u_char *)location->valuestring;
@@ -522,6 +551,16 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
     }
 
     ngx_http_core_run_phases(r);
+}
+
+static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev, cJSON *json) {
+    // @TODO set headers to response / call next filter handler
+    ngx_log_stderr(0, "Read Filters Handler");
+
+    //    ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
+    //
+    //    ctx->wait_for_connection = 0;
+    //    ctx->resource = NULL;
 }
 
 static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
@@ -751,19 +790,21 @@ static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(n
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
+    ngx_log_stderr(0, "Status Filter 1");
+
     if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
-        return ngx_http_next_header_filter(r);
+        return ngx_http_redirectionio_headers_filter(r);
     }
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     // Skip if no need to redirect
     if (ctx == NULL || ctx->status == 0 || ctx->match_on_response_status == 0 || ctx->is_redirected) {
-        return ngx_http_next_header_filter(r);
+        return ngx_http_redirectionio_headers_filter(r);
     }
 
     if (r->headers_out.status != ctx->match_on_response_status) {
-        return ngx_http_next_header_filter(r);
+        return ngx_http_redirectionio_headers_filter(r);
     }
 
     if (ctx->status != 410) {
@@ -788,9 +829,126 @@ static ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(n
 }
 
 static ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
-    // Send headers to agent
+    ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_http_redirectionio_conf_t   *conf;
+    ngx_int_t                       status;
 
-    // Read call should call core_run_phases
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+
+    ngx_log_stderr(0, "Header Filter 1");
+
+    if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
+        return ngx_http_next_header_filter(r);
+    }
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+
+    // Skip if no need to filters headers (no context, no rule, no filter on headers, or already filtered headers)
+    if (ctx == NULL || ctx->status == 0 || ctx->should_filter_headers == 0 || ctx->headers_filtered) {
+        return ngx_http_next_header_filter(r);
+    }
+
+    ngx_log_stderr(0, "Header Filter 2");
+
+    // Get connection
+    if (ctx->resource == NULL) {
+        if (ctx->wait_for_connection) {
+            return NGX_AGAIN;
+        }
+
+        status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available, r);
+
+        if (status == NGX_AGAIN) {
+            ctx->wait_for_connection = 1;
+
+            return status;
+        }
+
+        if (status != NGX_OK) {
+            return ngx_http_next_header_filter(r);
+        }
+    }
+
+    ngx_log_stderr(0, "Header Filter 3");
+
+    // Check connection
+    if (ctx->connection_error) {
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
+
+        ctx->wait_for_connection = 0;
+        ctx->resource = NULL;
+        ctx->connection_error = 0;
+
+        return ngx_http_next_header_filter(r);
+    }
+
+    ngx_log_stderr(0, "Header Filter 4");
+
+    if (ctx->wait_for_header_filtering) {
+        return NGX_AGAIN;
+    }
+
+    ngx_log_stderr(0, "Header Filter 5");
+    ngx_http_redirectionio_write_filter_headers_handler(ctx->resource->peer.connection->write);
+    ctx->wait_for_header_filtering = 1;
 
     return NGX_AGAIN;
+}
+
+static void ngx_http_redirectionio_write_filter_headers_handler(ngx_event_t *wev) {
+    ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_connection_t                *c;
+    ngx_http_request_t              *r;
+    ngx_http_redirectionio_conf_t   *conf;
+
+    c = wev->data;
+    r = c->data;
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+
+    ngx_add_timer(c->read, RIO_TIMEOUT);
+    ctx->read_handler = ngx_http_redirectionio_read_filter_headers_handler;
+    ngx_log_stderr(0, "Header Filter 6");
+
+    ngx_http_redirectionio_protocol_send_filter_header(c, r, &conf->project_key, &ctx->matched_rule_id);
+}
+
+static ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
+    ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_http_redirectionio_conf_t   *conf;
+    ngx_int_t                       status;
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+
+    ngx_log_stderr(0, "Body Filter 1");
+
+    if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
+        return ngx_http_next_body_filter(r, in);
+    }
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+
+    // Skip if no need to filters body and headers (no context, no rule)
+    if (ctx == NULL || ctx->status == 0) {
+    ngx_log_stderr(0, "Body Filter WTF");
+        return ngx_http_next_body_filter(r, in);
+    }
+
+    // Check if we are waiting for filtering headers or connection
+    if (ctx->wait_for_header_filtering || ctx->wait_for_connection) {
+        ngx_log_stderr(0, "Body Filter WAIT");
+        return NGX_AGAIN;
+    }
+
+    // Skip if no need to filters body (no filter on body, or already filtered headers)
+    if (ctx->should_filter_body == 0 || ctx->body_filtered) {
+    ngx_log_stderr(0, "Body Filter NO NEED");
+        return ngx_http_next_body_filter(r, in);
+    }
+
+    // Otherwise stream the body to redirection io agent
+
+    ngx_log_stderr(0, "Body Filter 2");
+
+    return ngx_http_next_body_filter(r, in);
 }
