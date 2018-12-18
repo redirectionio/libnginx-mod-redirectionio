@@ -172,6 +172,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->wait_for_match = 0;
         ctx->match_on_response_status = 0;
         ctx->is_redirected = 0;
+        ctx->headers_sent = 0;
         ctx->body_buffer = NULL;
 
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);

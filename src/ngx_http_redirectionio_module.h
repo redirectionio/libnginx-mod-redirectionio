@@ -15,7 +15,7 @@
 #define RIO_MIN_CONNECTIONS 0
 #define RIO_KEEP_CONNECTIONS 10
 #define RIO_MAX_CONNECTIONS 10
-#define RIO_TIMEOUT 10000
+#define RIO_TIMEOUT 100
 
 #define NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE   500
 
@@ -47,6 +47,7 @@ typedef struct {
 
     ngx_uint_t                              is_redirected;
     ngx_uint_t                              headers_filtered;
+    ngx_uint_t                              headers_sent;
     ngx_uint_t                              body_filtered;
     ngx_uint_t                              connection_error;
     ngx_http_redirectionio_read_handler_t   read_handler;
@@ -75,5 +76,6 @@ ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *params);
 ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error);
+void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
 
 #endif

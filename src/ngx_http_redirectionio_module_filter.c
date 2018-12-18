@@ -2,6 +2,7 @@
 
 static void ngx_http_redirectionio_write_filter_headers_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_finalize_request(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx);
+static ngx_int_t ngx_http_redirectionio_pool_available_filter(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 
 void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev, cJSON *json) {
     ngx_http_redirectionio_ctx_t    *ctx;
@@ -155,8 +156,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
             return NGX_AGAIN;
         }
 
-        // @TODO Use another pool available function that
-        status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available, r);
+        status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available_filter, r);
 
         if (status == NGX_AGAIN) {
             ctx->wait_for_connection = 1;
@@ -263,16 +263,67 @@ static void ngx_http_redirectionio_write_filter_headers_handler(ngx_event_t *wev
 }
 
 static void ngx_http_redirectionio_finalize_request(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx) {
-    // @TODO Check for errors
-    // Send headers
-    ngx_http_next_header_filter(r);
+    ngx_int_t   status;
+
+    if (!ctx->headers_sent) {
+        status = ngx_http_next_header_filter(r);
+
+        if (status == NGX_AGAIN) {
+            return;
+        }
+
+        ctx->headers_sent = 1;
+    }
 
     // Send body if already available
     if (ctx->body_buffer != NULL) {
-        ngx_http_redirectionio_body_filter(r, NULL);
+        status = ngx_http_redirectionio_body_filter(r, NULL);
+
+        if (status == NGX_AGAIN) {
+            return;
+        }
     }
 
+    // @TODO Check if we are not already buffered
     r->buffered = 0;
 
     ngx_http_finalize_request(r, NGX_OK);
+}
+
+static ngx_int_t ngx_http_redirectionio_pool_available_filter(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred) {
+    ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_http_request_t              *r = (ngx_http_request_t *)data;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+
+    if (ctx == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] no context, skipping module for this request");
+
+        if (deferred) {
+            ngx_http_redirectionio_finalize_request(r, ctx);
+        }
+
+        return NGX_ERROR;
+    }
+
+    if (resource == NULL) {
+        ctx->connection_error = 1;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot acquire connection, retrieving resource from pool timed out, skipping module for this request");
+
+        if (deferred) {
+            ngx_http_redirectionio_finalize_request(r, ctx);
+        }
+
+        return NGX_ERROR;
+    }
+
+    ctx->resource = (ngx_http_redirectionio_resource_t *)resource;
+    ctx->resource->peer.connection->data = r;
+    ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_read_handler;
+
+    if (deferred) {
+        ngx_http_redirectionio_headers_filter(r);
+    }
+
+    return NGX_OK;
 }

@@ -1,10 +1,7 @@
 #include <ngx_http_redirectionio_module.h>
 
 static ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
-
-static void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
 static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev);
-
 static void ngx_http_redirectionio_json_cleanup(void *data);
 
 ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
@@ -144,7 +141,7 @@ static ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc
     return NGX_OK;
 }
 
-static void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
+void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
     ngx_http_redirectionio_ctx_t    *ctx;
