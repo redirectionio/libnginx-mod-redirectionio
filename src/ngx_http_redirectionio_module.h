@@ -29,6 +29,7 @@ typedef struct {
 } ngx_http_redirectionio_conf_t;
 
 typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, cJSON *json);
+typedef void (*ngx_http_redirectionio_read_binary_handler_t)(ngx_event_t *rev, u_char *buffer, ngx_int_t buffer_size);
 
 typedef struct {
     ngx_peer_connection_t   peer;
@@ -37,27 +38,29 @@ typedef struct {
 } ngx_http_redirectionio_resource_t;
 
 typedef struct {
-    ngx_http_redirectionio_resource_t       *resource;
-    ngx_str_t                               matched_rule_id;
-    ngx_str_t                               target;
-    ngx_uint_t                              status;
-    ngx_uint_t                              match_on_response_status;
-    ngx_uint_t                              should_filter_headers;
-    ngx_uint_t                              should_filter_body;
+    ngx_http_redirectionio_resource_t               *resource;
+    ngx_str_t                                       matched_rule_id;
+    ngx_str_t                                       target;
+    ngx_uint_t                                      status;
+    ngx_uint_t                                      match_on_response_status;
+    ngx_uint_t                                      should_filter_headers;
+    ngx_uint_t                                      should_filter_body;
 
-    ngx_uint_t                              is_redirected;
-    ngx_uint_t                              headers_filtered;
-    ngx_uint_t                              headers_sent;
-    ngx_uint_t                              body_filtered;
-    ngx_uint_t                              connection_error;
-    ngx_http_redirectionio_read_handler_t   read_handler;
+    ngx_uint_t                                      is_redirected;
+    ngx_uint_t                                      headers_filtered;
+    ngx_uint_t                                      headers_sent;
+    ngx_uint_t                                      body_filtered;
+    ngx_uint_t                                      first_buffer;
+    ngx_uint_t                                      connection_error;
+    ngx_http_redirectionio_read_handler_t           read_handler;
+    ngx_http_redirectionio_read_binary_handler_t    read_binary_handler;
 
-    ngx_uint_t                              wait_for_connection;
-    ngx_uint_t                              wait_for_match;
-    ngx_uint_t                              wait_for_header_filtering;
-    ngx_uint_t                              wait_for_body_filtering;
+    ngx_uint_t                                      wait_for_connection;
+    ngx_uint_t                                      wait_for_match;
+    ngx_uint_t                                      wait_for_header_filtering;
+    ngx_uint_t                                      wait_for_body_filtering;
 
-    ngx_chain_t                             *body_buffer;
+    ngx_chain_t                                     *body_buffer;
 } ngx_http_redirectionio_ctx_t;
 
 void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);
@@ -77,5 +80,6 @@ ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *re
 ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error);
 void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
+void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev);
 
 #endif
