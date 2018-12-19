@@ -8,7 +8,6 @@ const char COMMAND_FILTER_HEADER_NAME[] = "FILTER_HEADER";
 const char COMMAND_FILTER_BODY_NAME[] = "FILTER_BODY";
 
 #define htonll(x) ((1==htonl(1)) ? (x) : ((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
-#define ntohll(x) ((1==ntohl(1)) ? (x) : ((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 
 static void ngx_http_redirectionio_protocol_write_string(ngx_connection_t *c, u_char* data, uint64_t len);
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest);
@@ -172,7 +171,7 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
     ngx_send(c, (u_char *)dst, ngx_strlen(dst) + 1);
 }
 
-void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_http_redirectionio_buffer_filtered_t *buffer, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first) {
+void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first) {
     ngx_chain_t     *chain;
     ngx_uint_t      bsize;
 
@@ -188,7 +187,7 @@ void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_h
     }
 
     // Write buffer in only if buffer_size > 0
-    chain = buffer->input;
+    chain = in;
 
     while (chain != NULL) {
         // Send buffer only if buffer_size > 0
