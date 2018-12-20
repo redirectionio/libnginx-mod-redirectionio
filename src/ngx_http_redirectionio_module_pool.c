@@ -82,6 +82,8 @@ ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *re
         return NGX_ERROR;
     }
 
+    ctx->wait_for_connection = 0;
+
     if (resource == NULL) {
         ctx->connection_error = 1;
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot acquire connection, retrieving resource from pool timed out, skipping module for this request");

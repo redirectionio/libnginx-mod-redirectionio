@@ -194,7 +194,6 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     if (in != NULL && ctx->last_chain_sent == NULL) {
         ngx_http_redirectionio_write_filter_body_handler(ctx->resource->peer.connection->write, in, ctx->first_buffer);
         ctx->body_buffer = NULL;
-        ctx->wait_for_body_filtering = 1;
         ctx->first_buffer = 0;
     }
 
@@ -454,6 +453,8 @@ static ngx_int_t ngx_http_redirectionio_pool_available_filter_header(ngx_reslist
         return NGX_ERROR;
     }
 
+    ctx->wait_for_connection = 0;
+
     if (resource == NULL) {
         ctx->connection_error = 1;
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot acquire connection, retrieving resource from pool timed out, skipping module for this request");
@@ -491,6 +492,8 @@ static ngx_int_t ngx_http_redirectionio_pool_available_filter_body(ngx_reslist_t
 
         return NGX_ERROR;
     }
+
+    ctx->wait_for_connection = 0;
 
     if (resource == NULL) {
         ctx->connection_error = 1;
