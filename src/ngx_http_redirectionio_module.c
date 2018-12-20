@@ -469,6 +469,9 @@ static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJS
         rule_id = cJSON_GetObjectItem(matched_rule, "id");
     }
 
+    ctx->should_filter_body = 0;
+    ctx->should_filter_headers = 0;
+
     if (matched_rule == NULL || matched_rule->type == cJSON_NULL) {
         ctx->matched_rule_id.data = (u_char *)"";
         ctx->matched_rule_id.len = 0;
