@@ -129,6 +129,7 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
     ngx_table_elt_t     *h;
     ngx_uint_t          i;
     cJSON               *query, *headers, *header;
+    ngx_pool_cleanup_t  *cln;
 
     query = cJSON_CreateObject();
     headers = cJSON_CreateArray();
@@ -163,12 +164,13 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
         cJSON_AddItemToArray(headers, header);
     }
 
-    //@TODO Memory clean
-
     dst = cJSON_PrintUnformatted(query);
+    cJSON_Delete(query);
 
     ngx_send(c, (u_char *)COMMAND_FILTER_HEADER_NAME, sizeof(COMMAND_FILTER_HEADER_NAME));
     ngx_send(c, (u_char *)dst, ngx_strlen(dst) + 1);
+
+    free((void *)dst);
 }
 
 void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first) {

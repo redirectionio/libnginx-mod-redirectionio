@@ -286,7 +286,7 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
             return;
         }
 
-        buffer = (u_char *) ngx_pcalloc(c->pool, buffer_size);
+        buffer = (u_char *) ngx_pcalloc(r->pool, buffer_size);
         readed = ngx_recv(c, buffer, buffer_size);
         last_readed = readed;
 

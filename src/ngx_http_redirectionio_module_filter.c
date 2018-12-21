@@ -256,6 +256,7 @@ static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev,
     ctx->wait_for_header_filtering = 0;
 
     if (json == NULL) {
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
         ngx_http_redirectionio_finalize_request(r, ctx);
 
         return;
@@ -264,6 +265,7 @@ static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev,
     headers = cJSON_GetObjectItem(json, "headers");
 
     if (headers == NULL || headers->type != cJSON_Array) {
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
         ngx_http_redirectionio_finalize_request(r, ctx);
 
         return;
@@ -356,8 +358,12 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
 
         r->buffered = 0;
 
+        if (ctx->resource != NULL) {
+            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
+            ctx->resource = NULL;
+        }
+
         ngx_http_finalize_request(r, NGX_OK);
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
 
         return;
     }
@@ -372,16 +378,19 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
             ctx->last_chain_sent = NULL;
         }
 
-        // @TODO Check if there is a last buffer in chain sent and set r->buffered to 0 only if last
         r->buffered = 0;
 
+        if (ctx->resource != NULL) {
+            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
+            ctx->resource = NULL;
+        }
+
         ngx_http_finalize_request(r, NGX_OK);
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
 
         return;
     }
 
-    // Create and send buffer @TODO Check null
+    // Create and send buffer
     if (buffer_size > 0) {
         new_chain = ngx_alloc_chain_link(r->pool);
         new_chain->buf = ngx_calloc_buf(r->pool);
@@ -398,8 +407,6 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
         // Remove first buffer from last chain sent
         if (ctx->last_chain_sent != NULL) {
             ctx->last_chain_sent = ctx->last_chain_sent->next;
-
-            //@TODO Clear memory for the last chain sent
         }
     }
 
@@ -434,7 +441,6 @@ static void ngx_http_redirectionio_finalize_request(ngx_http_request_t *r, ngx_h
         }
     }
 
-    // @TODO Check if we are not already buffered
     r->buffered = 0;
 
     ngx_http_finalize_request(r, NGX_OK);

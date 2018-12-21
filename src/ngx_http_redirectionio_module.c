@@ -208,6 +208,14 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     if (ctx->connection_error) {
+        if (ctx->resource != NULL) {
+            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
+        }
+
+        ctx->wait_for_connection = 0;
+        ctx->resource = NULL;
+        ctx->connection_error = 0;
+
         return NGX_DECLINED;
     }
 
@@ -227,16 +235,6 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         if (status != NGX_OK) {
             return NGX_DECLINED;
         }
-    }
-
-    if (ctx->connection_error) {
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
-
-        ctx->wait_for_connection = 0;
-        ctx->resource = NULL;
-        ctx->connection_error = 0;
-
-        return NGX_DECLINED;
     }
 
     if (ctx->matched_rule_id.data == NULL) {
