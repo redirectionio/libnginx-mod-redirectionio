@@ -173,7 +173,7 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
 
 void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first) {
     ngx_chain_t     *chain;
-    ngx_uint_t      bsize;
+    uint64_t        bsize;
 
     if (is_first) {
         // If first write command name
@@ -192,7 +192,7 @@ void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_c
     while (chain != NULL) {
         // Send buffer only if buffer_size > 0
         if (chain->buf != NULL) {
-            bsize = ngx_buf_size(chain->buf);
+            bsize = (uint64_t)ngx_buf_size(chain->buf);
 
             if (bsize > 0) {
                 ngx_http_redirectionio_protocol_write_string(c, (u_char *)chain->buf->pos, bsize);
@@ -208,9 +208,9 @@ void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_c
 
     // If last write empty buffer
     if (chain->buf != NULL && chain->buf->last_buf) {
-        bsize = 0;
+        bsize = htonll((uint64_t)-1);
 
-        ngx_send(c, (u_char *)&bsize, sizeof(bsize));
+        ngx_send(c, (u_char *)&bsize, sizeof(uint64_t));
     }
 }
 

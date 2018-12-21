@@ -232,7 +232,7 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
     u_char                          *buffer;
     u_char                          read;
     ssize_t                         readed, last_readed;
-    uint64_t                        buffer_size;
+    int64_t                         buffer_size;
 
     c = rev->data;
     r = c->data;
@@ -242,7 +242,7 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] [binary] connection timeout while reading, skipping module for this request");
 
         ctx->connection_error = 1;
-        ctx->read_binary_handler(rev, NULL, 0);
+        ctx->read_binary_handler(rev, NULL, -2);
 
         return;
     }
@@ -257,7 +257,7 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
         if (readed == -1) { /* Error */
             ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] [binary] connection error while reading, skipping module for this request");
             ctx->connection_error = 1;
-            ctx->read_binary_handler(rev, NULL, 0);
+            ctx->read_binary_handler(rev, NULL, -2);
 
             return;
         }
@@ -269,15 +269,19 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
         if (readed != sizeof(buffer_size)) { /* Invalid Size */
             ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] [binary] invalid size while reading buffer size %d", readed);
             ctx->connection_error = 1;
-            ctx->read_binary_handler(rev, NULL, 0);
+            ctx->read_binary_handler(rev, NULL, -2);
 
             return;
         }
 
-        buffer_size = ntohll(buffer_size);
+        buffer_size = (int64_t)ntohll((uint64_t)buffer_size);
 
-        if (buffer_size == 0) { /* No more body */
-            ctx->read_binary_handler(rev, NULL, 0);
+        if (buffer_size == 0) {
+            continue;
+        }
+
+        if (buffer_size < 0) { /* No body */
+            ctx->read_binary_handler(rev, NULL, buffer_size);
 
             return;
         }
@@ -286,7 +290,7 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
         readed = ngx_recv(c, buffer, buffer_size);
         last_readed = readed;
 
-        while ((uint64_t)readed < buffer_size) {
+        while (readed < buffer_size) {
             if (last_readed == 0) {
                 ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] [binary] invalid size while reading buffer");
                 ctx->connection_error = 1;

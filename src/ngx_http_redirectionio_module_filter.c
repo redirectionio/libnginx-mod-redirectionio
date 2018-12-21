@@ -335,16 +335,42 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
-    // Can happens on error and
+    // Can happens on error and still reading
     if (ctx->should_filter_body == 0) {
         return;
     }
 
-    // If buffer is empty but there is buffer in the chain sent, then an errors happens -> deactivate body filtering
-    if (buffer_size == 0 && ctx->last_chain_sent != NULL) {
+    // If buffer is last -> send a last empty buffer, finalize request and release resource
+    if (buffer_size == -1) {
+        new_chain = ngx_alloc_chain_link(r->pool);
+        new_chain->buf = ngx_calloc_buf(r->pool);
+        new_chain->next = NULL;
+
+        new_chain->buf->pos = (u_char *)"\n";
+        new_chain->buf->last = new_chain->buf->pos + 1;
+        new_chain->buf->memory = 1;
+        new_chain->buf->last_buf = 1;
+        new_chain->buf->last_in_chain = 1;
+
+        ngx_http_next_body_filter(r, new_chain);
+
+        r->buffered = 0;
+
+        ngx_http_finalize_request(r, NGX_OK);
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
+
+        return;
+    }
+
+    // If an herros happens, then an errors happens -> deactivate body filtering
+    if (buffer_size == -2) {
         ctx->should_filter_body = 0;
-        ngx_http_next_body_filter(r, ctx->last_chain_sent);
-        ctx->last_chain_sent = NULL;
+
+        // If there is a last chain sent
+        if (ctx->last_chain_sent != NULL) {
+            ngx_http_next_body_filter(r, ctx->last_chain_sent);
+            ctx->last_chain_sent = NULL;
+        }
 
         // @TODO Check if there is a last buffer in chain sent and set r->buffered to 0 only if last
         r->buffered = 0;
@@ -355,8 +381,8 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
         return;
     }
 
-    // Send buffer @TODO Check null
-    if (buffer_size != 0) {
+    // Create and send buffer @TODO Check null
+    if (buffer_size > 0) {
         new_chain = ngx_alloc_chain_link(r->pool);
         new_chain->buf = ngx_calloc_buf(r->pool);
         new_chain->next = NULL;
@@ -377,31 +403,9 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
         }
     }
 
-    // If there is no more buffer in the last chain and there is a current buffer on context -> send it (early return here)
+    // If there is no more buffer in the last chain and there is a current buffer on context -> send it
     if (ctx->last_chain_sent == NULL && ctx->body_buffer != NULL) {
         ngx_http_redirectionio_body_filter(r, NULL);
-
-        return;
-    }
-
-    // If buffer is empty and last chain sent is empty, it's the last buffer -> send a last empty buffer, finalize request and release resource
-    if (buffer_size == 0 && ctx->last_chain_sent == NULL) {
-        new_chain = ngx_alloc_chain_link(r->pool);
-        new_chain->buf = ngx_calloc_buf(r->pool);
-        new_chain->next = NULL;
-
-        new_chain->buf->pos = (u_char *)"\n";
-        new_chain->buf->last = new_chain->buf->pos + 1;
-        new_chain->buf->memory = 1;
-        new_chain->buf->last_buf = 1;
-        new_chain->buf->last_in_chain = 1;
-
-        ngx_http_next_body_filter(r, new_chain);
-
-        r->buffered = 0;
-
-        ngx_http_finalize_request(r, NGX_OK);
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
     }
 }
 
