@@ -49,7 +49,6 @@ typedef struct {
     ngx_uint_t                                      is_redirected;
     ngx_uint_t                                      headers_filtered;
     ngx_uint_t                                      headers_sent;
-    ngx_uint_t                                      body_filtered;
     ngx_uint_t                                      first_buffer;
     ngx_uint_t                                      connection_error;
     ngx_http_redirectionio_read_handler_t           read_handler;

@@ -156,7 +156,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     }
 
     // Skip if no need to filters body (no filter on body, or already filtered headers)
-    if (ctx->should_filter_body == 0 || ctx->body_filtered) {
+    if (ctx->should_filter_body == 0) {
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -368,7 +368,7 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
         return;
     }
 
-    // If an herros happens, then an errors happens -> deactivate body filtering
+    // If equal to -2, then an error happens -> deactivate body filtering
     if (buffer_size == -2) {
         ctx->should_filter_body = 0;
 
