@@ -25,42 +25,4 @@ or
 
 ## Directives
 
-### redirectionio
-
-**syntax:** *redirectionio on|off*
-
-**default:** *off*
-
-**context:** *http, server, server if, location, location if*
-
-Enable or disable redirectionio matching process for request matching the current context.
-
-### redirectionio_pass
-
-**syntax:** *redirectionio_pass ip:port|unix:///path*
-
-**default:** *127.0.0.1:10301*
-
-**context:** *http, server, server if, location, location if*
-
-Specify the Agent backend for matching requests
-
-### redirectionio_project_key
-
-**syntax:** *redirectionio_project_key key*
-
-**default:** *none*
-
-**context:** *http, server, server if, location, location if*
-
-Set the project key to use for request matching the current context.
-
-### redirectionio_no_logs
-
-**syntax:** *redirectionio_no_logs on|off*
-
-**default:** *[value of redirectionio directive]*
-
-**context:** *http, server, server if, location, location if*
-
-Disable or reenable logs for the current matching context
+[See this documentation](https://redirection.io/documentation/developer-documentation/nginx-module#module-configuration-directives) for available directives

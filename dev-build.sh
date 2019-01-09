@@ -6,22 +6,10 @@
 # the resulting nginx is located at ./work/nginx/sbin/nginx
 root=`pwd`
 version=${1:-1.9.15}
-home=~
-
-# the ngx-build script is from https://github.com/openresty/openresty-devel-utils
-            #--add-module=$home/work/nginx_upload_module-2.2.0 \
-            #--without-pcre \
-            #--without-http_rewrite_module \
-            #--without-http_autoindex_module \
-            #--with-cc=gcc46 \
-            #--with-cc=clang \
-            #--without-http_referer_module \
-            #--with-http_spdy_module \
+module_directory="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 export NGX_BUILD_CC="gcc"
 export NGX_BUILD_JOBS=8
-
-echo `pwd`
 
 ngx-build $version \
     --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2" \
@@ -49,6 +37,6 @@ ngx-build $version \
     --with-http_xslt_module=dynamic \
     --with-mail=dynamic \
     --with-stream=dynamic \
-    --add-module=/home/rio/clients/nginx-redirectionio-module \
+    --add-module=$module_directory \
     $opts \
     --with-debug
