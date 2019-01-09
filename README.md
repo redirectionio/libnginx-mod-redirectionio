@@ -1,40 +1,31 @@
-# Nginx Module
+# About
 
-#### Installation
+Nginx HTTP module to do redirections on data coming from https://redirection.io/
 
-```
-fab local.infastructure.build
-```
+## Installation
 
-#### Compile nginx + module and execute nginx with it
+When using the default nginx version of your distribution use this documentation to install the module 
+https://redirection.io/documentation/developer-documentation/nginx-module
 
-```
-fab local.nginx.compile_and_test
-```
+### Manual
 
-#### Compile nginx + module and execute nginx with it and will output memory error into memory.log file
+If your nginx version is different from the default distribution or your distribution is not supported 
+you have to compile this module yourself. 
 
-```
-fab local.nginx.compile_and_test_memory_leaks
-```
+When compiling this module you need to use the **same exact source** and the **same exact compilation flags** 
+which were used to compile the nginx binary (some patches may be added compared to the official source).
 
-#### Rebuild from scratch (clean + build)
+You have to add the following directive on the `./configure` script: 
 
-```
-touch clients/nginx-redirectionio-module/config
-fab local.nginx.compile_and_test[_memory_leaks]
-```
+`--add-dynamic-module=/path/to/nginx-redirectionio-module-source` for a dynamic module (loaded with a config directive)
 
-#### Building modules for distribs
+or
 
-````
-docker build -f clients/nginx-redirectionio-module/Dockerfile[distrib] -t modulecompile clients/nginx-redirectionio-module
-docker run -ti -v `pwd`/clients:/root/clients modulecompile
-````
+`--add-module=/path/to/nginx-redirectionio-module-source` for a static module (present in the binary)
 
-### Proxy Directives
+## Directives
 
-#### redirectionio
+### redirectionio
 
 **syntax:** *redirectionio on|off*
 
@@ -44,27 +35,7 @@ docker run -ti -v `pwd`/clients:/root/clients modulecompile
 
 Enable or disable redirectionio matching process for request matching the current context.
 
-#### redirectionio_project_key
-
-**syntax:** *redirectionio_project_key key*
-
-**default:** *none*
-
-**context:** *http, server, server if, location, location if*
-
-Set the project key to use for request matching the current context.
-
-#### redirectionio_no_logs
-
-**syntax:** *redirectionio_no_logs on|off*
-
-**default:** *off*
-
-**context:** *http, server, server if, location, location if*
-
-Disable or reenable logs for the current matching context
-
-#### redirectionio_pass
+### redirectionio_pass
 
 **syntax:** *redirectionio_pass ip:port|unix:///path*
 
@@ -74,85 +45,22 @@ Disable or reenable logs for the current matching context
 
 Specify the Agent backend for matching requests
 
-### Agent Directives
+### redirectionio_project_key
 
-#### redirectionio_agent_enable
+**syntax:** *redirectionio_project_key key*
 
-**syntax:** *redirectionio_agent_enable on|off*
+**default:** *none*
 
-**default:** *on*
+**context:** *http, server, server if, location, location if*
 
-**context:** *http*
+Set the project key to use for request matching the current context.
 
-Enable or disable launching a redirectionio agent from nginx
+### redirectionio_no_logs
 
-#### redirectionio_listen
+**syntax:** *redirectionio_no_logs on|off*
 
-**syntax:** *redirectionio_listen ip:port|unix:///path*
+**default:** *[value of redirectionio directive]*
 
-**default:** *127.0.0.1:10301*
+**context:** *http, server, server if, location, location if*
 
-**context:** *http*
-
-Specify the backend network where the agent should listen to
-
-#### redirectionio_host
-
-**syntax:** *redirectionio_host ip:port|unix:///path*
-
-**default:** *https://api.redirection.io*
-
-**context:** *http*
-
-On which host the agent should make api calls
-
-#### redirectionio_instance_name
-
-**syntax:** *redirectionio_instance_name ip:port|unix:///path*
-
-**default:** *machine hostname*
-
-**context:** *http*
-
-Identifier for the agent that allows to trace logs and update from the manager
-
-#### redirectionio_persist
-
-**syntax:** *redirectionio_persist on|off*
-
-**default:** *on*
-
-**context:** *http*
-
-Whether or not rules should be persisted on disk
-
-#### redirectionio_datadir
-
-**syntax:** *redirectionio_datadir ip:port|unix:///path*
-
-**default:** */var/lib/redirectionio*
-
-**context:** *http*
-
-On which directory rules should be stored
-
-#### redirectionio_cache
-
-**syntax:** *redirectionio_cache on|off*
-
-**default:** *on*
-
-**context:** *http*
-
-Whether or not rules should be cached, when enabled it will consume more memory but will respond faster, when disabled
-consumes less memory but slower.
-
-#### redirectionio_debug
-
-**syntax:** *redirectionio_debug on|off*
-
-**default:** *off*
-
-**context:** *http*
-
-Enable or disable debug log for the agent (if enable error_log of nginx should be set to debug too)
+Disable or reenable logs for the current matching context
