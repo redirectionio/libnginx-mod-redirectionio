@@ -118,7 +118,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
     ngx_int_t                       status;
-    ngx_chain_t                     *buf;
+    ngx_chain_t                     *cl;
     ngx_str_t                       buffer_str;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
@@ -129,20 +129,19 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
-    if (ctx->body_buffer) {
-        buf = ctx->body_buffer;
+    if (ctx->body_buffer != NULL) {
+        cl = ctx->body_buffer;
 
-        while (buf->next != NULL) {
-            buf = buf->next;
+        while (cl->next != NULL) {
+            cl = cl->next;
         }
 
-        buf->next = in;
-
+        cl->next = in;
         in = ctx->body_buffer;
     }
 
     // Skip if no need to filters body and headers (no context, no rule)
-    if (ctx == NULL || ctx->status == 0) {
+    if (ctx == NULL) {
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -170,6 +169,9 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
         if (status == NGX_AGAIN) {
             ctx->wait_for_connection = 1;
+            ctx->body_buffer = in;
+
+            r->buffered = 1;
 
             return status;
         }
@@ -190,12 +192,14 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
         return ngx_http_next_body_filter(r, in);
     }
 
-    // Send only if in is not null and there is no chain being sent
-    if (in != NULL && ctx->last_chain_sent == NULL) {
+    // Send only if in is not null
+    if (in != NULL) {
         ngx_http_redirectionio_write_filter_body_handler(ctx->resource->peer.connection->write, in, ctx->first_buffer);
         ctx->body_buffer = NULL;
         ctx->first_buffer = 0;
     }
+
+    r->buffered = 1;
 
     // Stream body
     return NGX_AGAIN;
@@ -223,6 +227,7 @@ static void ngx_http_redirectionio_write_filter_body_handler(ngx_event_t *wev, n
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
     ngx_http_redirectionio_conf_t   *conf;
+    ngx_chain_t                     *cl;
 
     c = wev->data;
     r = c->data;
@@ -230,6 +235,16 @@ static void ngx_http_redirectionio_write_filter_body_handler(ngx_event_t *wev, n
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
     ngx_add_timer(c->read, RIO_TIMEOUT);
+
+    if (ctx->last_chain_sent != NULL) {
+        cl = ctx->last_chain_sent;
+
+        while (cl->next != NULL) {
+            cl = cl->next;
+        }
+
+        cl->next = in;
+    }
 
     ctx->last_chain_sent = in;
     ctx->read_binary_handler = ngx_http_redirectionio_read_filter_body_handler;
@@ -342,14 +357,19 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
         return;
     }
 
-    // If buffer is last -> send a last empty buffer, finalize request and release resource
-    if (buffer_size == -1) {
+    // If buffer is last or errored -> send a last empty buffer, finalize request and release resource
+    if (buffer_size < 0) {
+        if (ctx->resource != NULL) {
+            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, (buffer_size == -1) ? 0 : 1);
+            ctx->resource = NULL;
+        }
+
         new_chain = ngx_alloc_chain_link(r->pool);
         new_chain->buf = ngx_calloc_buf(r->pool);
         new_chain->next = NULL;
 
-        new_chain->buf->pos = (u_char *)"\n";
-        new_chain->buf->last = new_chain->buf->pos + 1;
+        new_chain->buf->pos = (u_char *)"";
+        new_chain->buf->last = new_chain->buf->pos;
         new_chain->buf->memory = 1;
         new_chain->buf->last_buf = 1;
         new_chain->buf->last_in_chain = 1;
@@ -357,33 +377,6 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
         ngx_http_next_body_filter(r, new_chain);
 
         r->buffered = 0;
-
-        if (ctx->resource != NULL) {
-            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
-            ctx->resource = NULL;
-        }
-
-        ngx_http_finalize_request(r, NGX_OK);
-
-        return;
-    }
-
-    // If equal to -2, then an error happens -> deactivate body filtering
-    if (buffer_size == -2) {
-        ctx->should_filter_body = 0;
-
-        // If there is a last chain sent
-        if (ctx->last_chain_sent != NULL) {
-            ngx_http_next_body_filter(r, ctx->last_chain_sent);
-            ctx->last_chain_sent = NULL;
-        }
-
-        r->buffered = 0;
-
-        if (ctx->resource != NULL) {
-            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
-            ctx->resource = NULL;
-        }
 
         ngx_http_finalize_request(r, NGX_OK);
 

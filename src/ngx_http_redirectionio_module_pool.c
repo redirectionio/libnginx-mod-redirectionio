@@ -238,6 +238,10 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
+    if (rev->timer_set) {
+        ngx_del_timer(rev);
+    }
+
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] [binary] connection timeout while reading, skipping module for this request");
 
@@ -245,10 +249,6 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
         ctx->read_binary_handler(rev, NULL, -2);
 
         return;
-    }
-
-    if (rev->timer_set) {
-        ngx_del_timer(rev);
     }
 
     for (;;) {
