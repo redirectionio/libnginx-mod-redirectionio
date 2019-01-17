@@ -129,34 +129,26 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
-    if (ctx->body_buffer != NULL) {
-        cl = ctx->body_buffer;
-
-        while (cl->next != NULL) {
-            cl = cl->next;
-        }
-
-        cl->next = in;
-        in = ctx->body_buffer;
+    // Skip if no context
+    if (ctx == NULL) {
+        return ngx_http_next_body_filter(r, in);
     }
 
-    // Skip if no need to filters body and headers (no context, no rule)
-    if (ctx == NULL) {
+    if (ngx_chain_add_copy(r->pool, &ctx->body_buffer, in) == NGX_ERROR) {
         return ngx_http_next_body_filter(r, in);
     }
 
     // Check if we are waiting for filtering headers or connection
     if (ctx->wait_for_header_filtering || ctx->wait_for_connection) {
         // Set request is buffered to avoid its destruction by nginx
-        r->buffered = 1;
-        ctx->body_buffer = in;
+        r->blocked = 1;
 
         return NGX_AGAIN;
     }
 
     // Skip if no need to filters body (no filter on body, or already filtered headers)
     if (ctx->should_filter_body == 0) {
-        return ngx_http_next_body_filter(r, in);
+        return ngx_http_next_body_filter(r, ctx->body_buffer);
     }
 
     // Get connection
@@ -169,15 +161,14 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
         if (status == NGX_AGAIN) {
             ctx->wait_for_connection = 1;
-            ctx->body_buffer = in;
 
-            r->buffered = 1;
+            r->blocked = 1;
 
             return status;
         }
 
         if (status != NGX_OK) {
-            return ngx_http_next_body_filter(r, in);
+            return ngx_http_next_body_filter(r, ctx->body_buffer);
         }
     }
 
@@ -189,17 +180,17 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
         ctx->resource = NULL;
         ctx->connection_error = 0;
 
-        return ngx_http_next_body_filter(r, in);
+        return ngx_http_next_body_filter(r, ctx->body_buffer);
     }
 
-    // Send only if in is not null
-    if (in != NULL) {
-        ngx_http_redirectionio_write_filter_body_handler(ctx->resource->peer.connection->write, in, ctx->first_buffer);
+    // Send only if ctx->body_buffer is not null
+    if (ctx->body_buffer != NULL) {
+        ngx_http_redirectionio_write_filter_body_handler(ctx->resource->peer.connection->write, ctx->body_buffer, ctx->first_buffer);
         ctx->body_buffer = NULL;
         ctx->first_buffer = 0;
     }
 
-    r->buffered = 1;
+    r->blocked = 1;
 
     // Stream body
     return NGX_AGAIN;
@@ -376,7 +367,7 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
 
         ngx_http_next_body_filter(r, new_chain);
 
-        r->buffered = 0;
+        r->blocked = 0;
 
         ngx_http_finalize_request(r, NGX_OK);
 
@@ -434,10 +425,9 @@ static void ngx_http_redirectionio_finalize_request(ngx_http_request_t *r, ngx_h
         }
     }
 
-    r->buffered = 0;
+    r->blocked = 0;
 
     ngx_http_finalize_request(r, NGX_OK);
-    ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
 }
 
 static ngx_int_t ngx_http_redirectionio_pool_available_filter_header(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred) {

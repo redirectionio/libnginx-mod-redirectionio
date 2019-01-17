@@ -177,7 +177,6 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->read_binary_handler = NULL;
         ctx->first_buffer = 1;
         ctx->last_chain_sent = NULL;
-        ctx->body_buffer = NULL;
 
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
     }
