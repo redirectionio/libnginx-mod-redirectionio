@@ -103,11 +103,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     // Check connection
     if (ctx->connection_error) {
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
-
-        ctx->wait_for_connection = 0;
-        ctx->resource = NULL;
-        ctx->connection_error = 0;
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 1);
 
         return ngx_http_next_header_filter(r);
     }
@@ -182,11 +178,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
     // Check connection
     if (ctx->connection_error) {
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
-
-        ctx->wait_for_connection = 0;
-        ctx->resource = NULL;
-        ctx->connection_error = 0;
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 1);
 
         return ngx_http_next_body_filter(r, ctx->body_buffer);
     }
@@ -270,7 +262,7 @@ static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev,
     ctx->wait_for_header_filtering = 0;
 
     if (json == NULL) {
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 1);
         ngx_http_redirectionio_finalize_request(r, ctx);
 
         return;
@@ -279,7 +271,7 @@ static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev,
     headers = cJSON_GetObjectItem(json, "headers");
 
     if (headers == NULL || headers->type != cJSON_Array) {
-        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 1);
+        ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 1);
         ngx_http_redirectionio_finalize_request(r, ctx);
 
         return;
@@ -332,9 +324,7 @@ static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev,
         h->value.len = strlen(value->valuestring);
     }
 
-    ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, 0);
-    ctx->wait_for_connection = 0;
-    ctx->resource = NULL;
+    ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 0);
 
     ngx_http_redirectionio_finalize_request(r, ctx);
 }
@@ -359,8 +349,7 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
     // If buffer is last or errored -> send a last empty buffer, finalize request and release resource
     if (buffer_size < 0) {
         if (ctx->resource != NULL) {
-            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx->resource, (buffer_size == -1) ? 0 : 1);
-            ctx->resource = NULL;
+            ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, (buffer_size == -1) ? 0 : 1);
         }
 
         new_chain = ngx_alloc_chain_link(r->pool);

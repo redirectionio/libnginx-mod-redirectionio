@@ -78,7 +78,7 @@ ngx_int_t ngx_http_redirectionio_pool_construct(void **resource, void *params);
 ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *params);
 ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
-void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error);
+void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_ctx_t *ctx, ngx_uint_t in_error);
 void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
 void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev);
 

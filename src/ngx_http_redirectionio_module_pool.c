@@ -107,38 +107,38 @@ ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *re
 }
 
 ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred) {
-    ngx_http_redirectionio_log_t    *log = (ngx_http_redirectionio_log_t *)data;
-    ngx_peer_connection_t           *peer = (ngx_peer_connection_t *)resource;
+    ngx_http_redirectionio_log_t       *log = (ngx_http_redirectionio_log_t *)data;
+    ngx_http_redirectionio_resource_t  *rr = (ngx_http_redirectionio_resource_t *)resource;
 
-    if (peer == NULL) {
+    if (rr == NULL) {
         ngx_http_redirectionio_protocol_free_log(log);
 
         return NGX_ERROR;
     }
 
-    ngx_http_redirectionio_protocol_send_log(peer->connection, log);
+    ngx_http_redirectionio_protocol_send_log(rr->peer.connection, log);
     ngx_http_redirectionio_protocol_free_log(log);
-    ngx_http_redirectionio_release_resource(reslist, resource, 0);
+    ngx_reslist_release(reslist, rr);
 
     return NGX_OK;
 }
 
-void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_resource_t *resource, ngx_uint_t in_error) {
-    if (in_error) {
-        ngx_reslist_invalidate(reslist, resource);
-
+void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_ctx_t *ctx, ngx_uint_t in_error) {
+    if (ctx->resource == NULL) {
         return;
     }
 
-    resource->usage++;
+    ctx->resource->usage++;
 
-    if (resource->usage > NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE) {
-        ngx_reslist_invalidate(reslist, resource);
-
-        return;
+    if (!in_error && ctx->resource->usage < NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE) {
+        ngx_reslist_release(reslist, ctx->resource);
+    } else {
+        ngx_reslist_invalidate(reslist, ctx->resource);
     }
 
-    ngx_reslist_release(reslist, resource);
+    ctx->resource = NULL;
+    ctx->wait_for_connection = 0;
+    ctx->connection_error = 0;
 }
 
 static ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data) {
