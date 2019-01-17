@@ -22,12 +22,20 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
-    // Skip if no need to redirect
-    if (ctx == NULL || ctx->status == 0 || ctx->match_on_response_status == 0 || ctx->is_redirected) {
+    if (ctx == NULL) {
         return ngx_http_redirectionio_headers_filter(r);
     }
 
-    if (r->headers_out.status != ctx->match_on_response_status) {
+    // Check match on response
+    if (!ctx->is_redirected && ctx->match_on_response_status > 0 && r->headers_out.status != ctx->match_on_response_status) {
+        // on not matching reset value to not redirect or filter
+        ctx->status = 0;
+        ctx->should_filter_body = 0;
+        ctx->should_filter_headers = 0;
+    }
+
+    // Skip if no need to redirect
+    if (ctx->status == 0 || ctx->is_redirected) {
         return ngx_http_redirectionio_headers_filter(r);
     }
 
@@ -359,8 +367,9 @@ static void ngx_http_redirectionio_read_filter_body_handler(ngx_event_t *rev, u_
         new_chain->buf = ngx_calloc_buf(r->pool);
         new_chain->next = NULL;
 
-        new_chain->buf->pos = (u_char *)"";
-        new_chain->buf->last = new_chain->buf->pos;
+        // It should not be a 0 sized buffer, so we simply send a new line one (no impact)
+        new_chain->buf->pos = (u_char *)"\n";
+        new_chain->buf->last = new_chain->buf->pos + 1;
         new_chain->buf->memory = 1;
         new_chain->buf->last_buf = 1;
         new_chain->buf->last_in_chain = 1;
