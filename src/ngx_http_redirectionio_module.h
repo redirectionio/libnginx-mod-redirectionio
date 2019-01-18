@@ -61,6 +61,7 @@ typedef struct {
 
     ngx_chain_t                                     *body_buffer;
     ngx_chain_t                                     *last_chain_sent;
+    ngx_uint_t                                      body_sent;
 } ngx_http_redirectionio_ctx_t;
 
 void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json);

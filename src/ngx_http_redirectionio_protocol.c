@@ -1,4 +1,5 @@
 #include <ngx_http_redirectionio_protocol.h>
+#include <ngx_http_redirectionio_module.h>
 
 const char COMMAND_MATCH_NAME[] = "MATCH_WITH_RESPONSE";
 const char COMMAND_MATCH_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\" }";
@@ -173,7 +174,7 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
     free((void *)dst);
 }
 
-void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first) {
+ngx_uint_t ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first) {
     ngx_chain_t     *chain;
     uint64_t        bsize;
 
@@ -211,9 +212,12 @@ void ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_c
     // If last write empty buffer
     if (chain->buf != NULL && chain->buf->last_buf) {
         bsize = htonll((uint64_t)-1);
-
         ngx_send(c, (u_char *)&bsize, sizeof(uint64_t));
+
+        return 1;
     }
+
+    return 0;
 }
 
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest) {

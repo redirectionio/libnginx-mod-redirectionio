@@ -57,6 +57,8 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
     // Avoid loop if we redirect on the same status as we match
     ctx->is_redirected = 1;
 
+    // @TODO This will made a double body response (one from nginx / one from upstream)
+    // @TODO Find a way to cancel the current body response
     return ngx_http_special_response_handler(r, ctx->status);
 }
 
@@ -142,6 +144,10 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
         return ngx_http_next_body_filter(r, in);
     }
 
+    if (ctx->body_sent) {
+        return NGX_OK;
+    }
+
     // Check if we are waiting for filtering headers or connection
     if (ctx->wait_for_header_filtering || ctx->wait_for_connection) {
         // Set request is buffered to avoid its destruction by nginx
@@ -219,6 +225,7 @@ static void ngx_http_redirectionio_write_filter_body_handler(ngx_event_t *wev, n
     ngx_http_request_t              *r;
     ngx_http_redirectionio_conf_t   *conf;
     ngx_chain_t                     *cl;
+    ngx_uint_t                      last;
 
     c = wev->data;
     r = c->data;
@@ -240,7 +247,11 @@ static void ngx_http_redirectionio_write_filter_body_handler(ngx_event_t *wev, n
     ctx->last_chain_sent = in;
     ctx->read_binary_handler = ngx_http_redirectionio_read_filter_body_handler;
 
-    ngx_http_redirectionio_protocol_send_filter_body(c, in, &conf->project_key, &ctx->matched_rule_id, is_first);
+    last = ngx_http_redirectionio_protocol_send_filter_body(c, in, &conf->project_key, &ctx->matched_rule_id, is_first);
+
+    if (last == 1) {
+        ctx->body_sent = 1;
+    }
 }
 
 static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev, cJSON *json) {
