@@ -20,9 +20,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
 
 static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev);
-
 static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json);
-static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev, cJSON *json);
 
 /**
  * Commands definitions

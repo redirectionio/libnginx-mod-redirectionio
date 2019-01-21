@@ -122,15 +122,12 @@ void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log)
 }
 
 void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id) {
-    ssize_t             wlen;
     const char          *dst;
-    ngx_str_t           v;
-    ngx_str_t           encoded_headers = ngx_null_string;
+    char                *hname, *hvalue;
     ngx_list_part_t     *part;
     ngx_table_elt_t     *h;
     ngx_uint_t          i;
     cJSON               *query, *headers, *header;
-    ngx_pool_cleanup_t  *cln;
 
     query = cJSON_CreateObject();
     headers = cJSON_CreateArray();
@@ -154,15 +151,21 @@ void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx
         }
 
         // Not used skip it
-        if (h[i].hash == 0) {
+        if (h[i].hash == 0 || h[i].value.len <= 0 || h[i].key.len <= 0) {
             continue;
         }
 
+        hname = strndup((const char *)h[i].key.data, h[i].key.len);
+        hvalue = strndup((const char *)h[i].value.data, h[i].value.len);
+
         header = cJSON_CreateObject();
-        cJSON_AddItemToObject(header, "name", cJSON_CreateString((const char *)h[i].key.data));
-        cJSON_AddItemToObject(header, "value", cJSON_CreateString((const char *)h[i].value.data));
+        cJSON_AddItemToObject(header, "name", cJSON_CreateString((const char *)hname));
+        cJSON_AddItemToObject(header, "value", cJSON_CreateString((const char *)hvalue));
 
         cJSON_AddItemToArray(headers, header);
+
+        free(hname);
+        free(hvalue);
     }
 
     dst = cJSON_PrintUnformatted(query);

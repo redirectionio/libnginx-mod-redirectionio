@@ -230,7 +230,6 @@ void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
     ngx_http_request_t              *r;
     ngx_http_redirectionio_ctx_t    *ctx;
     u_char                          *buffer;
-    u_char                          read;
     ssize_t                         readed, last_readed;
     int64_t                         buffer_size;
 
