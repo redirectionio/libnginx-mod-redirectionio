@@ -260,6 +260,7 @@ static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev,
     cJSON                           *headers, *item, *name, *value;
     ngx_table_elt_t                 *h;
     ngx_list_part_t                 *part;
+    u_int                           i;
 
     c = rev->data;
     r = c->data;
@@ -290,7 +291,7 @@ static void ngx_http_redirectionio_read_filter_headers_handler(ngx_event_t *rev,
     part = &r->headers_out.headers.part;
     h = part->elts;
 
-    for (u_int i = 0; /* void */ ; i++) {
+    for (i = 0; /* void */ ; i++) {
         if (i >= part->nelts) {
             if (part->next == NULL) {
                 break;
