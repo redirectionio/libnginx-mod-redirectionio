@@ -156,7 +156,10 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
     // Skip if no need to filters body (no filter on body, or already filtered headers)
     if (ctx->should_filter_body == 0) {
-        return ngx_http_next_body_filter(r, ctx->body_buffer);
+        status = ngx_http_next_body_filter(r, ctx->body_buffer);
+        ctx->body_buffer = NULL;
+
+        return status;
     }
 
     // Get connection
@@ -176,15 +179,20 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
         }
 
         if (status != NGX_OK) {
-            return ngx_http_next_body_filter(r, ctx->body_buffer);
+            status = ngx_http_next_body_filter(r, ctx->body_buffer);
+            ctx->body_buffer = NULL;
+
+            return status;
         }
     }
 
     // Check connection
     if (ctx->connection_error) {
         ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 1);
+        status = ngx_http_next_body_filter(r, ctx->body_buffer);
+        ctx->body_buffer = NULL;
 
-        return ngx_http_next_body_filter(r, ctx->body_buffer);
+        return status;
     }
 
     // Send only if ctx->body_buffer is not null
