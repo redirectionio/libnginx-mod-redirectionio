@@ -15,6 +15,7 @@ typedef struct {
     ngx_str_t   location;
     ngx_str_t   user_agent;
     ngx_str_t   referer;
+    ngx_str_t   method;
 } ngx_http_redirectionio_log_t;
 
 void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key);
