@@ -11,8 +11,10 @@ module_directory="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pw
 export NGX_BUILD_CC="gcc"
 export NGX_BUILD_JOBS=8
 
+PROXY_VERSION="${PROXY_VERSION:-libnginx-mod-redirectionio:dev}"
+
 ngx-build $version \
-    --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2" \
+    --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2 -DPROXY_VERSION=${PROXY_VERSION}" \
     --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC" \
     --with-debug \
     --with-pcre-jit \
@@ -41,7 +43,7 @@ ngx-build $version \
     $opts \
     --with-debug ||
 ngx-build $version \
-    --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2" \
+    --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2 -DPROXY_VERSION=${PROXY_VERSION}" \
     --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC" \
     --with-debug \
     --with-pcre-jit \

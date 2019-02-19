@@ -8,6 +8,7 @@
 #include <ngx_http_pool.h>
 #include <ngx_http_redirectionio_protocol.h>
 #include <ngx_http_json.h>
+#include <stdio.h>
 
 #define NGX_HTTP_REDIRECTIONIO_OFF     0
 #define NGX_HTTP_REDIRECTIONIO_ON      1
@@ -18,6 +19,13 @@
 #define RIO_TIMEOUT 100
 
 #define NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE   500
+
+#ifndef PROXY_VERSION
+#define PROXY_VERSION libnginx-mod-redirectionio:dev
+#endif
+
+#define STRINGIZE(x) #x
+#define PROXY_VERSION_STR(x) STRINGIZE(x)
 
 typedef struct {
     ngx_uint_t                  enable;

@@ -4,7 +4,7 @@
 const char COMMAND_MATCH_NAME[] = "MATCH_WITH_RESPONSE";
 const char COMMAND_MATCH_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\" }";
 const char COMMAND_LOG_NAME[] = "LOG";
-const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\", \"method\": \"%V\" }";
+const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\", \"method\": \"%V\", \"proxy\": \"%s\" }";
 const char COMMAND_FILTER_HEADER_NAME[] = "FILTER_HEADER";
 const char COMMAND_FILTER_BODY_NAME[] = "FILTER_BODY";
 
@@ -49,7 +49,8 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
         + log->user_agent.len
         + log->referer.len
         + log->method.len
-        - 18 // 9 * 2 (%x) characters replaced with values
+        + strlen(PROXY_VERSION_STR(PROXY_VERSION))
+        - 20 // 10 * 2 (%x) characters replaced with values
     ;
 
     dst = (u_char *) ngx_pcalloc(c->pool, wlen);
@@ -65,7 +66,8 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
         log->status,
         &log->user_agent,
         &log->referer,
-        &log->method
+        &log->method,
+        PROXY_VERSION_STR(PROXY_VERSION)
     );
 
     v = (ngx_str_t) { wlen, dst };
