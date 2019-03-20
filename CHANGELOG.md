@@ -11,7 +11,7 @@
 ## 0.4.0 - 18-01-2019
 
  * Improve stability of the module
- * Add support for match on response
+ * Add support for matching redirection on response status code
 
 ## 0.3.2 - 28-11-2018
 
