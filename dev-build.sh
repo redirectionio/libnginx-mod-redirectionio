@@ -15,7 +15,7 @@ PROXY_VERSION="${PROXY_VERSION:-libnginx-mod-redirectionio:dev}"
 
 ngx-build $version \
     --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2 -DPROXY_VERSION=${PROXY_VERSION}" \
-    --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC" \
+    --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -L../../../libredirectionio/target/release" \
     --with-debug \
     --with-pcre-jit \
     --with-ipv6 \
@@ -44,7 +44,7 @@ ngx-build $version \
     --with-debug ||
 ngx-build $version \
     --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2 -DPROXY_VERSION=${PROXY_VERSION}" \
-    --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC" \
+    --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -L../../../libredirectionio/target/release" \
     --with-debug \
     --with-pcre-jit \
     --with-ipv6 \

@@ -3,7 +3,7 @@ ngx_feature="Redirection IO library"
 ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs=
-ngx_feature_libs="-lm"
+ngx_feature_libs="-Wl,-Bstatic -lredirectionio -Wl,-Bdynamic -lm -lpthread"
 ngx_module_incs=$ngx_addon_dir/src
 ngx_feature_test=
 . auto/feature

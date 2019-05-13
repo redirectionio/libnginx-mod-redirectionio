@@ -166,7 +166,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
 
         ctx->connection_error = 1;
-        ctx->read_handler(rev, NULL);
+        ctx->read_handler(rev, NULL, NULL);
 
         return;
     }
@@ -181,7 +181,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         if (readed == -1) { /* Error */
             ctx->connection_error = 1;
             ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
+            ctx->read_handler(rev, NULL, NULL);
 
             return;
         }
@@ -189,7 +189,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         if (readed == 0) { /* EOF */
             ctx->connection_error = 1;
             ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection terminated while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
+            ctx->read_handler(rev, NULL, NULL);
 
             return;
         }
@@ -197,7 +197,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         if (len > max_size) { /* Too big */
             ctx->connection_error = 1;
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] message too big while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
+            ctx->read_handler(rev, NULL, NULL);
 
             return;
         }
@@ -214,7 +214,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
             cln->handler = ngx_http_redirectionio_json_cleanup;
             cln->data = json;
 
-            ctx->read_handler(rev, json);
+            ctx->read_handler(rev, json, (const char *)(buffer - len));
 
             return;
         }
@@ -222,95 +222,6 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         len++;
         *buffer = read;
         buffer++;
-    }
-}
-
-void ngx_http_redirectionio_read_binary_handler(ngx_event_t *rev) {
-    ngx_connection_t                *c;
-    ngx_http_request_t              *r;
-    ngx_http_redirectionio_ctx_t    *ctx;
-    u_char                          *buffer;
-    ssize_t                         readed, last_readed;
-    int64_t                         buffer_size;
-
-    c = rev->data;
-    r = c->data;
-    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-
-    if (rev->timer_set) {
-        ngx_del_timer(rev);
-    }
-
-    if (rev->timedout) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] [binary] connection timeout while reading, skipping module for this request");
-
-        ctx->connection_error = 1;
-        ctx->read_binary_handler(rev, NULL, -2);
-
-        return;
-    }
-
-    for (;;) {
-        readed = ngx_recv(c, (u_char *)&buffer_size, sizeof(buffer_size));
-
-        if (readed == -1) { /* Error */
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] [binary] connection error while reading, skipping module for this request");
-            ctx->connection_error = 1;
-            ctx->read_binary_handler(rev, NULL, -2);
-
-            return;
-        }
-
-        if (readed == 0 || readed == NGX_AGAIN) { /* No more data */
-            return;
-        }
-
-        if (readed != sizeof(buffer_size)) { /* Invalid Size */
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] [binary] invalid size while reading buffer size %d", readed);
-            ctx->connection_error = 1;
-            ctx->read_binary_handler(rev, NULL, -2);
-
-            return;
-        }
-
-        buffer_size = (int64_t)ntohll((uint64_t)buffer_size);
-
-        if (buffer_size == 0) {
-            continue;
-        }
-
-        if (buffer_size < 0) { /* No body */
-            ctx->read_binary_handler(rev, NULL, buffer_size);
-
-            return;
-        }
-
-        buffer = (u_char *) ngx_pcalloc(r->pool, buffer_size);
-        readed = ngx_recv(c, buffer, buffer_size);
-        last_readed = readed;
-
-        while (readed < buffer_size) {
-            if (last_readed == 0) {
-                ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] [binary] invalid size while reading buffer");
-                ctx->connection_error = 1;
-                ctx->read_binary_handler(rev, NULL, 0);
-
-                return;
-            }
-
-            if (last_readed == -1) { /* Error */
-                ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] [binary] connection error while reading, skipping module for this request");
-                ctx->connection_error = 1;
-                ctx->read_binary_handler(rev, NULL, 0);
-
-                return;
-            }
-
-            last_readed = ngx_recv(c, buffer + readed, buffer_size - readed);
-            readed = readed + last_readed;
-        }
-
-        ctx->read_binary_handler(rev, buffer, readed);
     }
 }
 

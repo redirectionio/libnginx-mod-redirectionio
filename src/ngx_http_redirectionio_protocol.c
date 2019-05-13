@@ -1,16 +1,13 @@
 #include <ngx_http_redirectionio_protocol.h>
 #include <ngx_http_redirectionio_module.h>
 
-const char COMMAND_MATCH_NAME[] = "MATCH_WITH_RESPONSE";
+const char COMMAND_MATCH_NAME[] = "MATCH_RULE";
 const char COMMAND_MATCH_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\" }";
 const char COMMAND_LOG_NAME[] = "LOG";
 const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\", \"method\": \"%V\", \"proxy\": \"%s\" }";
-const char COMMAND_FILTER_HEADER_NAME[] = "FILTER_HEADER";
-const char COMMAND_FILTER_BODY_NAME[] = "FILTER_BODY";
 
 #define htonll(x) ((1==htonl(1)) ? (x) : ((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
 
-static void ngx_http_redirectionio_protocol_write_string(ngx_connection_t *c, u_char* data, uint64_t len);
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest);
 
 void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key) {
@@ -70,6 +67,8 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
         PROXY_VERSION_STR(PROXY_VERSION)
     );
 
+    ngx_log_stderr(0, "LOG %s", dst);
+
     v = (ngx_str_t) { wlen, dst };
 
     ngx_send(c, (u_char *)COMMAND_LOG_NAME, sizeof(COMMAND_LOG_NAME));
@@ -127,120 +126,8 @@ void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log)
     free(log);
 }
 
-void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id) {
-    const char          *dst;
-    char                *hname, *hvalue;
-    ngx_list_part_t     *part;
-    ngx_table_elt_t     *h;
-    ngx_uint_t          i;
-    cJSON               *query, *headers, *header;
-
-    query = cJSON_CreateObject();
-    headers = cJSON_CreateArray();
-
-    cJSON_AddItemToObject(query, "project_id", cJSON_CreateString((const char *)project_key->data));
-    cJSON_AddItemToObject(query, "rule_id", cJSON_CreateString((const char *)rule_id->data));
-    cJSON_AddItemToObject(query, "headers", headers);
-
-    part = &r->headers_out.headers.part;
-    h = part->elts;
-
-    for (i = 0; /* void */ ; i++) {
-        if (i >= part->nelts) {
-            if (part->next == NULL) {
-                break;
-            }
-
-            part = part->next;
-            h = part->elts;
-            i = 0;
-        }
-
-        // Not used skip it
-        if (h[i].hash == 0 || h[i].value.len <= 0 || h[i].key.len <= 0) {
-            continue;
-        }
-
-        hname = strndup((const char *)h[i].key.data, h[i].key.len);
-        hvalue = strndup((const char *)h[i].value.data, h[i].value.len);
-
-        header = cJSON_CreateObject();
-        cJSON_AddItemToObject(header, "name", cJSON_CreateString((const char *)hname));
-        cJSON_AddItemToObject(header, "value", cJSON_CreateString((const char *)hvalue));
-
-        cJSON_AddItemToArray(headers, header);
-
-        free(hname);
-        free(hvalue);
-    }
-
-    dst = cJSON_PrintUnformatted(query);
-    cJSON_Delete(query);
-
-    ngx_send(c, (u_char *)COMMAND_FILTER_HEADER_NAME, sizeof(COMMAND_FILTER_HEADER_NAME));
-    ngx_send(c, (u_char *)dst, ngx_strlen(dst) + 1);
-
-    free((void *)dst);
-}
-
-ngx_uint_t ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first) {
-    ngx_chain_t     *chain;
-    uint64_t        bsize;
-
-    if (is_first) {
-        // If first write command name
-        ngx_send(c, (u_char *)COMMAND_FILTER_BODY_NAME, sizeof(COMMAND_FILTER_BODY_NAME));
-
-        // If first write project id
-        ngx_http_redirectionio_protocol_write_string(c, (u_char *)project_key->data, project_key->len);
-
-        // If first write rule id
-        ngx_http_redirectionio_protocol_write_string(c, (u_char *)rule_id->data, rule_id->len);
-    }
-
-    // Write buffer in only if buffer_size > 0
-    chain = in;
-
-    while (chain != NULL) {
-        // Send buffer only if buffer_size > 0
-        if (chain->buf != NULL) {
-            bsize = (uint64_t)ngx_buf_size(chain->buf);
-
-            if (bsize > 0) {
-                ngx_http_redirectionio_protocol_write_string(c, (u_char *)chain->buf->pos, bsize);
-            }
-        }
-
-        if (chain->next == NULL) {
-            break;
-        }
-
-        chain = chain->next;
-    }
-
-    // If last write empty buffer
-    if (chain->buf != NULL && chain->buf->last_buf) {
-        bsize = htonll((uint64_t)-1);
-        ngx_send(c, (u_char *)&bsize, sizeof(uint64_t));
-
-        return 1;
-    }
-
-    return 0;
-}
-
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest) {
     dest->len = src->len;
     dest->data = malloc(dest->len);
     ngx_memcpy(dest->data, src->data, dest->len);
-}
-
-static void ngx_http_redirectionio_protocol_write_string(ngx_connection_t *c, u_char* data, uint64_t len) {
-    uint64_t size;
-    ssize_t  sent;
-
-    size = htonll(len);
-
-    sent = ngx_send(c, (u_char *)&size, sizeof(uint64_t));
-    sent = sent + ngx_send(c, data, len);
 }
