@@ -194,6 +194,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_int_t                       status;
     const char                      *redirect;
+    ngx_table_elt_t                 *header_location;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -287,9 +288,9 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
 
     if(target_len > 0) {
         // Set target
-        r->headers_out.location = ngx_list_push(&r->headers_out.headers);
+        header_location = ngx_list_push(&r->headers_out.headers);
 
-        if (r->headers_out.location == NULL) {
+        if (header_location == NULL) {
             return NGX_DECLINED;
         }
 
@@ -297,10 +298,10 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         u_char *target = ngx_pcalloc(r->pool, target_len);
         ngx_memcpy(target, location->valuestring, target_len);
 
-        r->headers_out.location->hash = 1;
-        ngx_str_set(&r->headers_out.location->key, "Location");
-        r->headers_out.location->value.len = target_len;
-        r->headers_out.location->value.data = target;
+        header_location->hash = 1;
+        ngx_str_set(&header_location->key, "Location");
+        header_location->value.len = target_len;
+        header_location->value.data = target;
     }
 
     ctx->is_redirected = 1;

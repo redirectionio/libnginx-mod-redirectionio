@@ -9,6 +9,7 @@ const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%
 #define htonll(x) ((1==htonl(1)) ? (x) : ((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
 
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest);
+static ngx_table_elt_t* ngx_http_redirectionio_find_header(u_char *key, ngx_list_part_t *part);
 
 void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key) {
     ssize_t     wlen;
@@ -67,8 +68,6 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
         PROXY_VERSION_STR(PROXY_VERSION)
     );
 
-    ngx_log_stderr(0, "LOG %s", dst);
-
     v = (ngx_str_t) { wlen, dst };
 
     ngx_send(c, (u_char *)COMMAND_LOG_NAME, sizeof(COMMAND_LOG_NAME));
@@ -76,6 +75,7 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
 }
 
 ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id) {
+    ngx_table_elt_t                 *header_location;
     ngx_http_redirectionio_log_t    *log = malloc(sizeof(ngx_http_redirectionio_log_t));
     ngx_memzero(log, sizeof(ngx_http_redirectionio_log_t));
 
@@ -105,8 +105,10 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
         ngx_str_copy(&r->headers_in.host->value, &log->host);
     }
 
-    if (r->headers_out.location != NULL) {
-        ngx_str_copy(&r->headers_out.location->value, &log->location);
+    header_location = ngx_http_redirectionio_find_header((u_char *)"location", &r->headers_out.headers.part);
+
+    if (header_location != NULL) {
+        ngx_str_copy(&header_location->value, &log->location);
     }
 
     ngx_str_copy(&r->method_name, &log->method);
@@ -130,4 +132,29 @@ static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest) {
     dest->len = src->len;
     dest->data = malloc(dest->len);
     ngx_memcpy(dest->data, src->data, dest->len);
+}
+
+static ngx_table_elt_t* ngx_http_redirectionio_find_header(u_char *key, ngx_list_part_t *part) {
+    ngx_uint_t          i;
+    ngx_table_elt_t     *h;
+
+    h = part->elts;
+
+    for (i = 0; /* void */ ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            h = part->elts;
+            i = 0;
+        }
+
+        if (h[i].key.len > 0 && ngx_strncasecmp(key, h[i].key.data, h[i].key.len) == 0) {
+            return &h[i];
+        }
+    }
+
+    return NULL;
 }
