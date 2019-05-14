@@ -247,7 +247,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
             if (bsize > 0) {
                 buf_in = malloc(bsize + 1);
-                ngx_memcpy((char *)buf_in, chain->buf, bsize);
+                ngx_memcpy((char *)buf_in, chain->buf->pos, bsize);
                 *((char *)buf_in + bsize) = '\0';
 
                 buf_out = redirectionio_body_filter(ctx->filter_id, buf_in);
