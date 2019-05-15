@@ -75,6 +75,8 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
 }
 
 ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id) {
+    // @TODO Replace log structure by directly the query string
+
     ngx_table_elt_t                 *header_location;
     ngx_http_redirectionio_log_t    *log = malloc(sizeof(ngx_http_redirectionio_log_t));
     ngx_memzero(log, sizeof(ngx_http_redirectionio_log_t));
@@ -124,6 +126,7 @@ void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log)
     free(log->referer.data);
     free(log->host.data);
     free(log->location.data);
+    free(log->method.data);
 
     free(log);
 }

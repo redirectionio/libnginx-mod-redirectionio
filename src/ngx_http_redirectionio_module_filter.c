@@ -34,6 +34,8 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
     cJSON *redirect_json = cJSON_Parse(redirect);
 
     if (redirect_json == NULL) {
+        free((char *)redirect);
+
         return ngx_http_redirectionio_headers_filter(r);
     }
 
@@ -41,10 +43,16 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
     cJSON *status = cJSON_GetObjectItem(redirect_json, "status_code");
 
     if (location == NULL || status == NULL) {
+        cJSON_Delete(redirect_json);
+        free((char *)redirect);
+
         return ngx_http_redirectionio_headers_filter(r);
     }
 
     if (status->valueint <= 0) {
+        cJSON_Delete(redirect_json);
+        free((char *)redirect);
+
         return ngx_http_redirectionio_headers_filter(r);
     }
 
@@ -55,6 +63,9 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
         r->headers_out.location = ngx_list_push(&r->headers_out.headers);
 
         if (r->headers_out.location == NULL) {
+            cJSON_Delete(redirect_json);
+            free((char *)redirect);
+
             return ngx_http_redirectionio_headers_filter(r);
         }
 
@@ -72,6 +83,7 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
     r->headers_out.status = status->valueint;
 
     cJSON_Delete(redirect_json);
+    free((char *)redirect);
 
     // @TODO This will made a double body response (one from nginx / one from upstream)
     // @TODO Find a way to cancel the current body response
@@ -125,8 +137,13 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
             continue;
         }
 
-        hname = strndup((const char *)h[i].key.data, h[i].key.len);
-        hvalue = strndup((const char *)h[i].value.data, h[i].value.len);
+        hname = malloc(h[i].key.len + 1);
+        ngx_memcpy(hname, h[i].key.data, h[i].key.len);
+        *(hname + h[i].key.len) = '\0';
+
+        hvalue = malloc(h[i].value.len + 1);
+        ngx_memcpy(hvalue, h[i].value.data, h[i].value.len);
+        *(hvalue + h[i].value.len) = '\0';
 
         header = cJSON_CreateObject();
         cJSON_AddItemToObject(header, "name", cJSON_CreateString((const char *)hname));
@@ -140,6 +157,8 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     headers_str = cJSON_PrintUnformatted(headers);
     new_headers_str = redirectionio_header_filter(ctx->matched_rule_str, headers_str);
+    cJSON_Delete(headers);
+    free((char*) headers_str);
 
     if (new_headers_str == NULL) {
         return ngx_http_next_header_filter(r);
@@ -147,7 +166,9 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     new_headers = cJSON_Parse(new_headers_str);
 
-    if (new_headers == NULL || headers->type != cJSON_Array) {
+    if (new_headers == NULL || new_headers->type != cJSON_Array) {
+        free((char*) new_headers_str);
+
         return ngx_http_next_header_filter(r);
     }
 
@@ -170,9 +191,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         h[i].value.len = 0;
     }
 
-    // Reinit list of headers
-    ngx_list_init(&r->headers_out.headers, r->headers_out.headers.pool, cJSON_GetArraySize(headers), sizeof(ngx_table_elt_t));
-    item = headers->child;
+    item = new_headers->child;
 
     while (item != NULL) {
         // Item is a header
@@ -191,12 +210,18 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         }
 
         h->hash = 1;
-        h->key.data = (u_char *)name->valuestring;
-        h->key.len = strlen(name->valuestring);
 
-        h->value.data = (u_char *)value->valuestring;
+        h->key.len = strlen(name->valuestring);
+        h->key.data = ngx_pcalloc(r->pool, h->key.len);
+        ngx_memcpy(h->key.data, name->valuestring, h->key.len);
+
         h->value.len = strlen(value->valuestring);
+        h->value.data = ngx_pcalloc(r->pool, h->value.len);
+        ngx_memcpy(h->value.data, value->valuestring, h->value.len);
     }
+
+    cJSON_Delete(new_headers);
+    free((char *)new_headers_str);
 
     // Create body filter
     filter_id = redirectionio_create_body_filter(ctx->matched_rule_str);

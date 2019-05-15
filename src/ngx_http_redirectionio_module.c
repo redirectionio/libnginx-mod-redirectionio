@@ -270,6 +270,8 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     cJSON *redirect_json = cJSON_Parse(redirect);
 
     if (redirect_json == NULL) {
+        free((char *)redirect);
+
         return NGX_DECLINED;
     }
 
@@ -277,10 +279,16 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     cJSON *status_code = cJSON_GetObjectItem(redirect_json, "status_code");
 
     if (location == NULL || status_code == NULL) {
+        cJSON_Delete(redirect_json);
+        free((char *)redirect);
+
         return NGX_DECLINED;
     }
 
     if (status_code->valueint <= 0) {
+        cJSON_Delete(redirect_json);
+        free((char *)redirect);
+
         return NGX_DECLINED;
     }
 
@@ -291,6 +299,9 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         header_location = ngx_list_push(&r->headers_out.headers);
 
         if (header_location == NULL) {
+            cJSON_Delete(redirect_json);
+            free((char *)redirect);
+
             return NGX_DECLINED;
         }
 
@@ -308,6 +319,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     r->headers_out.status = status_code->valueint;
 
     cJSON_Delete(redirect_json);
+    free((char *)redirect);
 
     return r->headers_out.status;
 }
@@ -346,6 +358,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     }
 
     log = ngx_http_redirectionio_protocol_create_log(r, &conf->project_key, &rule_id);
+    free(rule_id.data);
 
     if (log == NULL) {
         return NGX_DECLINED;
