@@ -239,7 +239,8 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     ngx_http_redirectionio_conf_t   *conf;
     ngx_chain_t                     *chain, *new_chain, *last_chain, *first_chain;
     const char                      *buf_in, *buf_out;
-    size_t                          bsize;
+    char                            *memory_buf;
+    size_t                          bsize, mbsize;
     ngx_uint_t                      last_buf;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
@@ -277,24 +278,35 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
                 buf_out = redirectionio_body_filter(ctx->filter_id, buf_in);
 
-                if (buf_out != NULL && strlen(buf_out) > 0) {
-                    new_chain = ngx_alloc_chain_link(r->pool);
-                    new_chain->buf = ngx_calloc_buf(r->pool);
-                    new_chain->next = NULL;
+                free((char *)buf_in);
 
-                    new_chain->buf->pos = (u_char *)buf_out;
-                    new_chain->buf->last = new_chain->buf->pos + strlen(buf_out);
-                    new_chain->buf->memory = 1;
-                    new_chain->buf->last_buf = 0;
-                    new_chain->buf->last_in_chain = 0;
+                if (buf_out != NULL) {
+                    mbsize = strlen(buf_out);
 
-                    if (last_chain != NULL) {
-                        last_chain->next = new_chain;
-                    } else {
-                        first_chain = new_chain;
+                    if (mbsize > 0) {
+                        memory_buf = ngx_pcalloc(r->pool, mbsize);
+                        ngx_memcpy(memory_buf, buf_out, mbsize);
+
+                        new_chain = ngx_alloc_chain_link(r->pool);
+                        new_chain->buf = ngx_calloc_buf(r->pool);
+                        new_chain->next = NULL;
+
+                        new_chain->buf->pos = (u_char *)memory_buf;
+                        new_chain->buf->last = new_chain->buf->pos + mbsize;
+                        new_chain->buf->memory = 1;
+                        new_chain->buf->last_buf = 0;
+                        new_chain->buf->last_in_chain = 0;
+
+                        if (last_chain != NULL) {
+                            last_chain->next = new_chain;
+                        } else {
+                            first_chain = new_chain;
+                        }
+
+                        last_chain = new_chain;
                     }
 
-                    last_chain = new_chain;
+                    free((char *)buf_out);
                 }
             }
 
@@ -302,27 +314,40 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
             if (chain->buf->last_buf == 1) {
                 last_buf = 1;
                 buf_out = redirectionio_body_filter_end(ctx->filter_id);
+                free((char *)ctx->filter_id);
+                ctx->filter_id = NULL;
 
-                if (buf_out != NULL && strlen(buf_out) > 0) {
-                    new_chain = ngx_alloc_chain_link(r->pool);
-                    new_chain->buf = ngx_calloc_buf(r->pool);
-                    new_chain->next = NULL;
+                if (buf_out != NULL) {
+                    mbsize = strlen(buf_out);
 
-                    new_chain->buf->pos = (u_char *)buf_out;
-                    new_chain->buf->last = new_chain->buf->pos + strlen(buf_out);
-                    new_chain->buf->memory = 1;
-                    new_chain->buf->last_buf = 1;
-                    new_chain->buf->last_in_chain = 0;
+                    if (mbsize > 0) {
+                        memory_buf = ngx_pcalloc(r->pool, mbsize);
+                        ngx_memcpy(memory_buf, buf_out, mbsize);
 
-                    if (last_chain != NULL) {
-                        last_chain->next = new_chain;
-                    } else {
-                        first_chain = new_chain;
+                        new_chain = ngx_alloc_chain_link(r->pool);
+                        new_chain->buf = ngx_calloc_buf(r->pool);
+                        new_chain->next = NULL;
+
+                        new_chain->buf->pos = (u_char *)memory_buf;
+                        new_chain->buf->last = new_chain->buf->pos + mbsize;
+                        new_chain->buf->memory = 1;
+                        new_chain->buf->last_buf = 1;
+                        new_chain->buf->last_in_chain = 0;
+
+                        if (last_chain != NULL) {
+                            last_chain->next = new_chain;
+                        } else {
+                            first_chain = new_chain;
+                        }
+
+                        last_chain = new_chain;
                     }
 
-                    last_chain = new_chain;
-                } else if (last_chain != NULL) {
-                    last_chain->buf->last_buf = 1;
+                    if (last_chain != NULL) {
+                        last_chain->buf->last_buf = 1;
+                    }
+
+                    free((char *)buf_out);
                 }
             }
         }
