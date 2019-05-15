@@ -187,6 +187,11 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
             i = 0;
         }
 
+        // Not used skip it
+        if (h[i].hash == 0 || h[i].value.len <= 0 || h[i].key.len <= 0) {
+            continue;
+        }
+
         h[i].hash = 0;
         h[i].value.len = 0;
     }
@@ -256,6 +261,11 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
         return ngx_http_next_body_filter(r, in);
     }
 
+    // Discard body if last buffer already sent (avoid double body)
+    if (ctx->last_buffer_sent == 1) {
+        return NGX_OK;
+    }
+
     // Skip if no filter_id
     if (ctx->filter_id == NULL) {
         return ngx_http_next_body_filter(r, in);
@@ -316,6 +326,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
                 buf_out = redirectionio_body_filter_end(ctx->filter_id);
                 free((char *)ctx->filter_id);
                 ctx->filter_id = NULL;
+                ctx->last_buffer_sent = 1;
 
                 if (buf_out != NULL) {
                     mbsize = strlen(buf_out);

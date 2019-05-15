@@ -59,12 +59,10 @@ typedef struct {
 
     ngx_uint_t                                      connection_error;
     ngx_uint_t                                      wait_for_connection;
+    ngx_uint_t                                      last_buffer_sent;
 
     ngx_uint_t                                      is_redirected;
     ngx_http_redirectionio_read_handler_t           read_handler;
-
-    ngx_chain_t                                     *body_buffer;
-    ngx_chain_t                                     *last_chain_sent;
 } ngx_http_redirectionio_ctx_t;
 
 void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json, const char *json_str);
