@@ -9,7 +9,7 @@
 #include <ngx_http_redirectionio_protocol.h>
 #include <ngx_http_json.h>
 #include <stdio.h>
-#include "../../libredirectionio/target/redirectionio.h"
+#include "redirectionio.h"
 
 #define NGX_HTTP_REDIRECTIONIO_OFF     0
 #define NGX_HTTP_REDIRECTIONIO_ON      1
