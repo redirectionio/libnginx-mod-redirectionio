@@ -160,7 +160,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
     ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
-    buffer = (u_char *) ngx_pcalloc(c->pool, max_size);
+    buffer = (u_char *) ngx_pcalloc(r->pool, max_size);
 
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
