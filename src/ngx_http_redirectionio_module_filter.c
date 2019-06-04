@@ -1,5 +1,7 @@
 #include <ngx_http_redirectionio_module.h>
 
+static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(const char *filter_id, ngx_pool_t *pool, ngx_chain_t *cl);
+
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
@@ -242,11 +244,11 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
-    ngx_chain_t                     *chain, *new_chain, *last_chain, *first_chain;
+    ngx_chain_t                     *out, *cl, *tl, *ll;
     const char                      *buf_in, *buf_out;
     char                            *memory_buf;
-    size_t                          bsize, mbsize;
-    ngx_uint_t                      last_buf;
+    size_t                          bsize, mbsize, tsize;
+    ngx_int_t                       rc;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -271,113 +273,146 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
         return ngx_http_next_body_filter(r, in);
     }
 
-    chain = in;
-    new_chain = NULL;
-    last_chain = NULL;
-    first_chain = NULL;
-    last_buf = 0;
-
-    while (chain != NULL) {
-        if (chain->buf != NULL) {
-            bsize = ngx_buf_size(chain->buf);
-
-            if (bsize > 0) {
-                buf_in = malloc(bsize + 1);
-                ngx_memcpy((char *)buf_in, chain->buf->pos, bsize);
-                *((char *)buf_in + bsize) = '\0';
-
-                buf_out = redirectionio_body_filter(ctx->filter_id, buf_in);
-
-                free((char *)buf_in);
-
-                if (buf_out != NULL) {
-                    mbsize = strlen(buf_out);
-
-                    if (mbsize > 0) {
-                        memory_buf = ngx_pcalloc(r->pool, mbsize);
-                        ngx_memcpy(memory_buf, buf_out, mbsize);
-
-                        new_chain = ngx_alloc_chain_link(r->pool);
-                        new_chain->buf = ngx_calloc_buf(r->pool);
-                        new_chain->next = NULL;
-
-                        new_chain->buf->pos = (u_char *)memory_buf;
-                        new_chain->buf->last = new_chain->buf->pos + mbsize;
-                        new_chain->buf->memory = 1;
-                        new_chain->buf->last_buf = 0;
-                        new_chain->buf->last_in_chain = 0;
-
-                        if (last_chain != NULL) {
-                            last_chain->next = new_chain;
-                        } else {
-                            first_chain = new_chain;
-                        }
-
-                        last_chain = new_chain;
-                    }
-
-                    free((char *)buf_out);
-                }
-            }
-
-            // If last buf
-            if (chain->buf->last_buf == 1) {
-                last_buf = 1;
-                buf_out = redirectionio_body_filter_end(ctx->filter_id);
-                free((char *)ctx->filter_id);
-                ctx->filter_id = NULL;
-                ctx->last_buffer_sent = 1;
-
-                if (buf_out != NULL) {
-                    mbsize = strlen(buf_out);
-
-                    if (mbsize > 0) {
-                        memory_buf = ngx_pcalloc(r->pool, mbsize);
-                        ngx_memcpy(memory_buf, buf_out, mbsize);
-
-                        new_chain = ngx_alloc_chain_link(r->pool);
-                        new_chain->buf = ngx_calloc_buf(r->pool);
-                        new_chain->next = NULL;
-
-                        new_chain->buf->pos = (u_char *)memory_buf;
-                        new_chain->buf->last = new_chain->buf->pos + mbsize;
-                        new_chain->buf->memory = 1;
-                        new_chain->buf->last_buf = 1;
-                        new_chain->buf->last_in_chain = 0;
-
-                        if (last_chain != NULL) {
-                            last_chain->next = new_chain;
-                        } else {
-                            first_chain = new_chain;
-                        }
-
-                        last_chain = new_chain;
-                    }
-
-                    if (last_chain != NULL) {
-                        last_chain->buf->last_buf = 1;
-                    }
-
-                    free((char *)buf_out);
-                }
-            }
-        }
-
-        chain = chain->next;
-    }
-
-    if (last_chain != NULL) {
-        last_chain->buf->last_in_chain = 1;
-    }
-
-    if (first_chain != NULL) {
-        return ngx_http_next_body_filter(r, first_chain);
-    }
-
-    // Something bad happen if we receive last buf and no current buffer return old buffer
-    if (last_buf) {
+    if (in == NULL) {
         return ngx_http_next_body_filter(r, in);
     }
 
-    return NGX_OK;
+    out = NULL;
+    ll = NULL;
+    tsize = 0;
+
+    for (cl = in; cl; cl = cl->next) {
+        tl = ngx_http_redirectionio_body_filter_replace(ctx->filter_id, r->pool, cl);
+
+        // Last link is not null, set the next of it to the current one
+        if (ll != NULL) {
+            ll->next = tl;
+        } else {
+            out = tl;
+        }
+
+        ll = tl;
+        tsize += ngx_buf_size(cl->buf);
+    }
+
+    rc = NGX_OK;
+
+    // Everything is buffered
+    if (out != NULL) {
+        rc = ngx_http_next_body_filter(r, out);
+    }
+
+    // Fake initial chain as sent
+    in = ngx_chain_update_sent(in, tsize);
+
+    return rc;
+}
+
+static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(const char *filter_id, ngx_pool_t *pool, ngx_chain_t *cl) {
+    ngx_chain_t                     *out = NULL, *el = NULL;
+    const char                      *buf_in, *buf_out;
+    char                            *memory_buf;
+    size_t                          bsize, mbsize;
+
+    bsize = ngx_buf_size(cl->buf);
+
+    if (bsize <= 0) {
+        return cl;
+    }
+
+    buf_in = malloc(bsize + 1);
+    ngx_memcpy((char *)buf_in, cl->buf->pos, bsize);
+    *((char *)buf_in + bsize) = '\0';
+
+    buf_out = redirectionio_body_filter(filter_id, buf_in);
+    free((char *)buf_in);
+
+    if (buf_out != NULL && strlen(buf_out) > 0) {
+        mbsize = strlen(buf_out);
+
+        out = ngx_palloc(pool, sizeof(ngx_chain_t));
+
+        if (out == NULL) {
+            return cl;
+        }
+
+        memory_buf = ngx_palloc(pool, mbsize);
+        ngx_memcpy(memory_buf, buf_out, mbsize);
+        free((char *)buf_out);
+
+        out->next = NULL;
+        out->buf = ngx_create_temp_buf(pool, mbsize);
+
+        if (out->buf == NULL) {
+            return cl;
+        }
+
+        out->buf->pos = (u_char *)memory_buf;
+        out->buf->last = out->buf->pos + mbsize;
+        out->buf->last_buf = 0;
+        out->buf->last_in_chain = cl->buf->last_in_chain;
+        out->buf->tag = (ngx_buf_tag_t) &ngx_http_redirectionio_module;
+    }
+
+    if (cl->buf->last_buf == 1) {
+        buf_out = redirectionio_body_filter_end(filter_id);
+
+        if (buf_out == NULL || strlen(buf_out) == 0) {
+            if (out != NULL) {
+                out->buf->last_buf = 1;
+
+                return out;
+            }
+
+            return cl;
+        }
+
+        mbsize = strlen(buf_out);
+        el = ngx_palloc(pool, sizeof(ngx_chain_t));
+
+        if (el == NULL) {
+            if (out != NULL) {
+                out->buf->last_buf = 1;
+
+                return out;
+            }
+
+            return cl;
+        }
+
+        memory_buf = ngx_palloc(pool, mbsize);
+        ngx_memcpy(memory_buf, buf_out, mbsize);
+        free((char *)buf_out);
+
+        el->next = NULL;
+        el->buf = ngx_create_temp_buf(pool, mbsize);
+
+        if (out->buf == NULL) {
+            if (out != NULL) {
+                out->buf->last_buf = 1;
+
+                return out;
+            }
+
+            return cl;
+        }
+
+        el->buf->pos = (u_char *)memory_buf;
+        el->buf->last = out->buf->pos + mbsize;
+        el->buf->last_buf = 1;
+        el->buf->last_in_chain = 1;
+        el->buf->tag = (ngx_buf_tag_t) &ngx_http_redirectionio_module;
+
+        if (out == NULL) {
+            return el;
+        }
+
+        out->next = el;
+    }
+
+    if (out != NULL) {
+        return out;
+    }
+
+    return cl;
 }
