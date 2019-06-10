@@ -245,9 +245,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
     ngx_chain_t                     *out, *cl, *tl, *ll;
-    const char                      *buf_in, *buf_out;
-    char                            *memory_buf;
-    size_t                          bsize, mbsize, tsize;
+    size_t                          tsize;
     ngx_int_t                       rc;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
@@ -265,7 +263,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
     // Discard body if last buffer already sent (avoid double body)
     if (ctx->last_buffer_sent == 1) {
-        return NGX_OK;
+        return ngx_http_next_body_filter(r, NULL);
     }
 
     // Skip if no filter_id
@@ -293,6 +291,10 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
         ll = tl;
         tsize += ngx_buf_size(cl->buf);
+
+        if (tl->buf->last_buf) {
+            ctx->last_buffer_sent = 1;
+        }
     }
 
     rc = NGX_OK;
