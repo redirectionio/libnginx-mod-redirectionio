@@ -154,6 +154,10 @@ static ngx_table_elt_t* ngx_http_redirectionio_find_header(u_char *key, ngx_list
             i = 0;
         }
 
+        if (h[i].hash == 0) {
+            continue;
+        }
+
         if (h[i].key.len > 0 && ngx_strncasecmp(key, h[i].key.data, h[i].key.len) == 0) {
             return &h[i];
         }
