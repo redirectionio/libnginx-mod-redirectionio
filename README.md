@@ -29,7 +29,7 @@ or
 And also update the `with-cc-opt` and `with-ld-opt` flag to add the path where you compile the [libredirectionio library](https://github.com/redirectionio/libredirectionio)
 
 ```
---with-cc-opt="...-I/tmp/libredirectionio/target"
+--with-cc-opt="... -I/tmp/libredirectionio/target"
 --with-ld-opt="... -L/tmp/libredirectionio/target/release"
 ```
 
