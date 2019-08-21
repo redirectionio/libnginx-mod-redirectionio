@@ -259,8 +259,12 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         return NGX_DECLINED;
     }
 
-    // Get redirect before response
-    redirect = redirectionio_get_redirect(ctx->matched_rule_str, (const char *)r->unparsed_uri.data, 0);
+    // Copy string
+    u_char *origin_url = ngx_pnalloc(r->pool, r->unparsed_uri.len + 1);
+    ngx_memcpy(origin_url, r->unparsed_uri.data, r->unparsed_uri.len);
+    *(origin_url + r->unparsed_uri.len) = '\0';
+
+    redirect = redirectionio_get_redirect(ctx->matched_rule_str, (const char *)origin_url, 0);
 
     if (redirect == NULL) {
         return NGX_DECLINED;

@@ -27,7 +27,12 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
         return ngx_http_redirectionio_headers_filter(r);
     }
 
-    redirect = redirectionio_get_redirect(ctx->matched_rule_str, (const char *)r->unparsed_uri.data, r->headers_out.status);
+    // Copy string
+    u_char *origin_url = ngx_pnalloc(r->pool, r->unparsed_uri.len + 1);
+    ngx_memcpy(origin_url, r->unparsed_uri.data, r->unparsed_uri.len);
+    *(origin_url + r->unparsed_uri.len) = '\0';
+
+    redirect = redirectionio_get_redirect(ctx->matched_rule_str, (const char *)origin_url, r->headers_out.status);
 
     if (redirect == NULL) {
         return ngx_http_redirectionio_headers_filter(r);
