@@ -1,0 +1,23 @@
+# Source files. mod_auth_mellon.c must be the first file.
+SRC=src/mod_redirectionio.c \
+	src/json.c \
+	src/redirectionio_protocol.c
+
+OBJ=$(SRC:.c=.o)
+
+all: src/mod_redirectionio.so
+
+%.o: %.c %.h
+	@CC@ @CFLAGS@ -I. -c $(@:.o=.c) -fPIC -DPIC -o $@
+
+src/mod_redirectionio.so: $(OBJ)
+	@CC@ -shared -fPIC -DPIC $(OBJ) @LDFLAGS@ @LIBS@ -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -g -O2 -fstack-protector-strong -Wl,-soname -Wl,mod_redirectionio.so -o $@
+
+.PHONY:	install
+install: src/mod_redirectionio.so
+	cp src/mod_redirectionio.so @MODULE_DIR@/mod_redirectionio.so
+
+.PHONY:	clean
+clean:
+	rm -f src/mod_redirectionio.so
+	rm -f $(SRC:%.c=%.o)
