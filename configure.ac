@@ -1,40 +1,32 @@
 AC_INIT([mod_redirectionio], [1.0.0], [contact@redirection.io])
 
+AC_CHECK_PROG(NGINX, [nginx], [yes], [no])
+AS_IF(test x$NGINX = xno,
+    AC_MSG_ERROR([nginx is required.])
+)
+
+AC_CHECK_PROG(WGET, [wget], [yes], [no])
+AS_IF(test x$WGET = xno,
+    AC_MSG_ERROR([wget is required.])
+)
+
+AC_CHECK_PROG(TAR, [tar], [yes], [no])
+AS_IF(test x$TAR = xno,
+    AC_MSG_ERROR([tar is required.])
+)
+
 AC_ARG_WITH([version], [AS_HELP_STRING([--with-proxy-version],
     [proxy version to output])],
-    [PROXY_VERSION=$withval], [PROXY_VERSION=libapache2-mod-redirectionio:dev])
+    [PROXY_VERSION=$withval], [PROXY_VERSION=libnginx-mod-redirectionio:dev])
 
-AC_ARG_WITH(
-	[apxs2],
-	[  --with-apxs=PATH       Use APXS executable.],
-	[
-		APXS=${withval}
-	],)
+PATCH_FILES=
 
-if test "x$APXS" = "x"; then
-    # The user didn't specify the --with-apxs2-option.
-
-    # Search for apxs2 in the specified directories
-    AC_PATH_PROG(APXS, apxs,,
-        /usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin)
-
-    if test "x$APXS" = "x"; then
-         # Didn't find apxs in any of the specified directories.
-         # Search for apxs2 instead.
-         AC_PATH_PROG(APXS, apxs2,,
-             /usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin)
-    fi
-fi
-
-# Test if $APXS exists and is an executable.
-if test ! -x "$APXS"; then
-   # $APXS isn't a executable file.
-   AC_MSG_ERROR([
-Could not find apxs. Please spesify the path to apxs
-using the --with-apxs=/full/path/to/apxs option.
-The executable may also be named 'apxs2'.
+AC_ARG_ENABLE([debian-header],
+    AS_HELP_STRING([--enable-debian-header], [Patch nginx source with the debian header patch.]), [
+    PATCH_FILES="$PATCH_FILES patches/debian-headers.patch"
 ])
-fi
+
+echo x${enable_debian-header}
 
 # Dependencies
 PKG_PROG_PKG_CONFIG
@@ -43,43 +35,37 @@ PKG_INSTALLDIR
 PKG_CHECK_MODULES([redirectionio], [libredirectionio >= 0.0.1])
 
 # Checks for programs.
-AC_PROG_CC
-AC_PROG_CC_STDC
-AC_PROG_CC_C99
+AC_PROG_GREP
 
 # Checks for libs
 AC_CHECK_LIB(pthread, pthread_create)
 AC_CHECK_LIB([m], [cos])
 
-PREFIX="$($APXS -q prefix)"
-PREFIX="${PREFIX:-/usr}"
-LDFLAGS="-L$($APXS -q libdir) -L$LIBREDIRECTIONIO_LIB $LDFLAGS"
-HTTPD_VERSION="$($APXS -q HTTPD_VERSION)"
-CC="$($APXS -q CC)"
-CFLAGS="$($APXS -q CFLAGS) $($APXS -q CPPFLAGS) $($APXS -q EXTRA_CPPFLAGS) $($APXS -q EXTRA_CFLAGS) -I$($APXS -q includedir) -I$($APXS -q APR_INCLUDEDIR)"
+
+NGINX_VERSION=`nginx -v 2>&1 | $ac_cv_path_GREP -o '[[0-9.]]*\$'`
+NGINX_CONFIGURE=`nginx -V 2>&1 | grep -oP 'configure arguments: (.*)' | cut -d" " -f3-`
+NGINX_PREFIX=`nginx -V 2>&1 | grep -oP '\-\-prefix=([[^\s]]*)'| cut -d "=" -f2`
+
+PREFIX="${NGINX_PREFIX:-/etc/nginx}"
 CFLAGS="$CFLAGS -Wall -g -std=c99 -DPROXY_VERSION=$PROXY_VERSION $redirectionio_CFLAGS"
 LIBS="$LIBS $redirectionio_LIBS"
-LIBTOOL="$($APXS -q LIBTOOL)"
-MODULE_DIR="$($APXS -q exp_libexecdir)"
+MODULE_DIR=$NGINX_PREFIX/modules
 
-AC_SUBST(LDFLAGS)
-AC_SUBST(CC)
+AC_SUBST(PREFIX)
+AC_SUBST(NGINX_VERSION)
+AC_SUBST(NGINX_CONFIGURE)
+AC_SUBST(MODULE_DIR)
 AC_SUBST(CFLAGS)
 AC_SUBST(LIBS)
-AC_SUBST(LIBTOOL)
-AC_SUBST(MODULE_DIR)
-AC_SUBST(APXS)
+AC_SUBST(PATCH_FILES)
 
 AC_MSG_NOTICE([summary of build options:
-    Install prefix: ${PREFIX}
-    APXS:           ${APXS}
-    HTTPD-VERSION:  ${HTTPD_VERSION}
-    C compiler:     ${CC}
-    CFLAGS:         ${CFLAGS}
-    LDFLAGS:        ${LDFLAGS}
-    LIBS:           ${LIBS}
-    LIBTOOL:        ${LIBTOOL}
-    MODULE_DIR:     ${MODULE_DIR}
+    Install prefix:     ${PREFIX}
+    NGINX-VERSION:      ${NGINX_VERSION}
+    NGINX-CONFIGURE:    ${NGINX_CONFIGURE}
+    CFLAGS:             ${CFLAGS}
+    LIBS:               ${LIBS}
+    MODULE_DIR:         ${MODULE_DIR}
 ])
 
 AC_CONFIG_FILES([Makefile])

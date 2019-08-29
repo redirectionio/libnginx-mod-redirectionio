@@ -1,23 +1,37 @@
 # Source files. mod_auth_mellon.c must be the first file.
-SRC=src/mod_redirectionio.c \
-	src/json.c \
-	src/redirectionio_protocol.c
+SRC=src/ngx_http_json.c \
+	src/ngx_http_pool.c \
+	src/ngx_http_redirectionio_module.c \
+	src/ngx_http_redirectionio_module_filter.c \
+	src/ngx_http_redirectionio_module_pool.c \
+	src/ngx_http_redirectionio_protocol.c
 
-OBJ=$(SRC:.c=.o)
+PATCH_FILES:=@PATCH_FILES@
 
-all: src/mod_redirectionio.so
+all: nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so
 
-%.o: %.c %.h
-	@CC@ @CFLAGS@ -I. -c $(@:.o=.c) -fPIC -DPIC -o $@
+nginx-@NGINX_VERSION@.tar.gz:
+	wget http://nginx.org/download/nginx-@NGINX_VERSION@.tar.gz -O nginx-@NGINX_VERSION@.tar.gz
 
-src/mod_redirectionio.so: $(OBJ)
-	@CC@ -shared -fPIC -DPIC $(OBJ) @LDFLAGS@ @LIBS@ -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -g -O2 -fstack-protector-strong -Wl,-soname -Wl,mod_redirectionio.so -o $@
+nginx-@NGINX_VERSION@: nginx-@NGINX_VERSION@.tar.gz
+	tar -xvzf nginx-@NGINX_VERSION@.tar.gz
+
+.PHONY: patch
+patch: $(PATCH_FILES)
+
+$(PATCH_FILES): %: nginx-@NGINX_VERSION@
+	cd nginx-@NGINX_VERSION@; patch -p1 < ../$*
+
+nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so: patch nginx-@NGINX_VERSION@
+	cd nginx-@NGINX_VERSION@; \
+	./configure @NGINX_CONFIGURE@ --add-dynamic-module=../; \
+	make modules
 
 .PHONY:	install
-install: src/mod_redirectionio.so
-	cp src/mod_redirectionio.so @MODULE_DIR@/mod_redirectionio.so
+install: nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so
+	install -c -m 644 nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so @MODULE_DIR@/ngx_http_redirectionio_module.so
 
 .PHONY:	clean
 clean:
-	rm -f src/mod_redirectionio.so
-	rm -f $(SRC:%.c=%.o)
+	rm -rf nginx-@NGINX_VERSION@
+	rm -f nginx-@NGINX_VERSION@.tar.gz
