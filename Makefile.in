@@ -8,6 +8,8 @@ SRC=src/ngx_http_json.c \
 
 PATCH_FILES:=@PATCH_FILES@
 
+DESTDIR ?=
+
 all: nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so
 
 nginx-@NGINX_VERSION@.tar.gz:
@@ -29,7 +31,7 @@ nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so: patch nginx-@NGINX_
 
 .PHONY:	install
 install: nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so
-	install -c -m 644 nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so @MODULE_DIR@/ngx_http_redirectionio_module.so
+	install -c -m 644 nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so $(DESTDIR)@MODULE_DIR@/ngx_http_redirectionio_module.so
 
 .PHONY:	clean
 clean:
