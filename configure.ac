@@ -1,10 +1,5 @@
 AC_INIT([mod_redirectionio], [1.0.0], [contact@redirection.io])
 
-AC_CHECK_PROG(NGINX, [nginx], [yes], [no])
-AS_IF(test x$NGINX = xno,
-    AC_MSG_ERROR([nginx is required.])
-)
-
 AC_CHECK_PROG(WGET, [wget], [yes], [no])
 AS_IF(test x$WGET = xno,
     AC_MSG_ERROR([wget is required.])
@@ -15,7 +10,29 @@ AS_IF(test x$TAR = xno,
     AC_MSG_ERROR([tar is required.])
 )
 
-AC_ARG_WITH([version], [AS_HELP_STRING([--with-proxy-version],
+AC_ARG_WITH([nginx_version], [AS_HELP_STRING([--with-nginx-version],
+    [nginx version to use])],
+    [NGINX_VERSION=$withval], [NGINX_VERSION=])
+
+AS_IF(test x$NGINX_VERSION = x, [
+        AC_PATH_PROG([NGINX_BIN],[nginx],[])
+        AS_IF(test x$NGINX_BIN = x,
+            AC_MSG_ERROR([nginx is required.]), [
+                NGINX_VERSION=`${NGINX_BIN} -v 2>&1 | $ac_cv_path_GREP -o '[[0-9.]]*\$'`
+                NGINX_CONFIGURE=`${NGINX_BIN} -V 2>&1 | grep -oP 'configure arguments: (.*)' | cut -d" " -f3-`
+                NGINX_PREFIX=`${NGINX_BIN} -V 2>&1 | grep -oP '\-\-prefix=([[^\s]]*)'| cut -d "=" -f2`
+                NGINX_MAKE_TARGET="modules"
+            ]
+        )
+    ], [
+        NGINX_CONFIGURE="--with-cc-opt='-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt=-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now --with-compat --with-debug --with-file-aio --with-http_addition_module --with-http_auth_request_module --with-http_dav_module --with-http_degradation_module --with-http_flv_module --with-http_geoip_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_mp4_module --with-http_realip_module --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module --with-http_stub_status_module --with-http_sub_module --with-http_v2_module --with-mail --with-mail_ssl_module --with-pcre-jit --with-stream --with-stream_geoip_module --with-stream_realip_module --with-stream_ssl_module --with-stream_ssl_preread_module --with-threads"
+        NGINX_PREFIX=""
+        NGINX_BIN="./nginx-${NGINX_VERSION}/objs/nginx"
+        NGINX_MAKE_TARGET=""
+    ]
+)
+
+AC_ARG_WITH([proxy_version], [AS_HELP_STRING([--with-proxy-version],
     [proxy version to output])],
     [PROXY_VERSION=$withval], [PROXY_VERSION=libnginx-mod-redirectionio:dev])
 
@@ -25,8 +42,6 @@ AC_ARG_ENABLE([debian-header],
     AS_HELP_STRING([--enable-debian-header], [Patch nginx source with the debian header patch.]), [
     PATCH_FILES="$PATCH_FILES patches/debian-headers.patch"
 ])
-
-echo x${enable_debian-header}
 
 # Dependencies
 PKG_PROG_PKG_CONFIG
@@ -41,11 +56,7 @@ AC_PROG_GREP
 AC_CHECK_LIB(pthread, pthread_create)
 AC_CHECK_LIB([m], [cos])
 
-
-NGINX_VERSION=`nginx -v 2>&1 | $ac_cv_path_GREP -o '[[0-9.]]*\$'`
-NGINX_CONFIGURE=`nginx -V 2>&1 | grep -oP 'configure arguments: (.*)' | cut -d" " -f3-`
-NGINX_PREFIX=`nginx -V 2>&1 | grep -oP '\-\-prefix=([[^\s]]*)'| cut -d "=" -f2`
-NGINX_BIN=`which nginx`
+AC_ARG_VAR([nginx_version], [Nginx version to use])
 
 BUILD_MODULES_DIR="nginx-${NGINX_VERSION}/objs"
 PREFIX="${NGINX_PREFIX:-/etc/nginx}"
@@ -62,6 +73,7 @@ AC_SUBST(LIBS)
 AC_SUBST(PATCH_FILES)
 AC_SUBST(NGINX_BIN)
 AC_SUBST(BUILD_MODULES_DIR)
+AC_SUBST(NGINX_MAKE_TARGET)
 
 AC_MSG_NOTICE([summary of build options:
     Install prefix:     ${PREFIX}
@@ -70,6 +82,7 @@ AC_MSG_NOTICE([summary of build options:
     CFLAGS:             ${CFLAGS}
     LIBS:               ${LIBS}
     MODULE_DIR:         ${MODULE_DIR}
+    NGINX_BIN:          ${NGINX_BIN}
 ])
 
 AC_CONFIG_FILES([Makefile])

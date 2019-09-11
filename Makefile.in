@@ -27,7 +27,7 @@ $(PATCH_FILES): %: nginx-@NGINX_VERSION@
 nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so: patch nginx-@NGINX_VERSION@
 	cd nginx-@NGINX_VERSION@; \
 	./configure @NGINX_CONFIGURE@ --add-dynamic-module=../; \
-	make modules
+	make -j12 @NGINX_MAKE_TARGET@
 
 .PHONY: test
 test: nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so
