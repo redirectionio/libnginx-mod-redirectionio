@@ -1,0 +1,35 @@
+#user html;
+worker_processes 4;
+daemon off;
+master_process on;
+
+load_module @abs_srcdir@/@BUILD_MODULES_DIR@/ngx_http_redirectionio_module.so;
+
+events {
+    worker_connections 1024;
+}
+
+error_log  /proc/self/fd/2 debug;
+
+http {
+    default_type application/octet-stream;
+
+    sendfile on;
+    types_hash_max_size 2048;
+    server_tokens off;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    tcp_nopush on;
+
+    gzip on;
+
+    server {
+        listen       10080;
+        server_name  localhost;
+        root         /var/www;
+        access_log   off;
+
+        redirectionio on;
+        redirectionio_project_key "project_key";
+    }
+}

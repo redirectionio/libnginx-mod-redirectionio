@@ -1,6 +1,7 @@
 autom4te.cache
 buildroot/
 nginx-*
+!nginx-test.conf.in
 work/
 aclocal.m4
 config.log

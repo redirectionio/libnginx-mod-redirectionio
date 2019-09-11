@@ -45,7 +45,9 @@ AC_CHECK_LIB([m], [cos])
 NGINX_VERSION=`nginx -v 2>&1 | $ac_cv_path_GREP -o '[[0-9.]]*\$'`
 NGINX_CONFIGURE=`nginx -V 2>&1 | grep -oP 'configure arguments: (.*)' | cut -d" " -f3-`
 NGINX_PREFIX=`nginx -V 2>&1 | grep -oP '\-\-prefix=([[^\s]]*)'| cut -d "=" -f2`
+NGINX_BIN=`which nginx`
 
+BUILD_MODULES_DIR="nginx-${NGINX_VERSION}/objs"
 PREFIX="${NGINX_PREFIX:-/etc/nginx}"
 CFLAGS="$CFLAGS -Wall -g -std=c99 -DPROXY_VERSION=$PROXY_VERSION $redirectionio_CFLAGS"
 LIBS="$LIBS $redirectionio_LIBS"
@@ -58,6 +60,8 @@ AC_SUBST(MODULE_DIR)
 AC_SUBST(CFLAGS)
 AC_SUBST(LIBS)
 AC_SUBST(PATCH_FILES)
+AC_SUBST(NGINX_BIN)
+AC_SUBST(BUILD_MODULES_DIR)
 
 AC_MSG_NOTICE([summary of build options:
     Install prefix:     ${PREFIX}
@@ -69,4 +73,5 @@ AC_MSG_NOTICE([summary of build options:
 ])
 
 AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([nginx-test.conf])
 AC_OUTPUT

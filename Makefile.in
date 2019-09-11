@@ -29,6 +29,10 @@ nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so: patch nginx-@NGINX_
 	./configure @NGINX_CONFIGURE@ --add-dynamic-module=../; \
 	make modules
 
+.PHONY: test
+test: nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so
+	@NGINX_BIN@ -t -c @abs_srcdir@/nginx-test.conf
+
 .PHONY:	install
 install: nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so
 	mkdir -p $(DESTDIR)@MODULE_DIR@/
