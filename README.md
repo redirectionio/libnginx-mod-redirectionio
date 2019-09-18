@@ -23,6 +23,14 @@ make
 make install
 ```
 
+#### Specific nginx version
+
+You can also build the module against a specific version of nginx:
+
+```
+./configure --with-nginx-version=1.16.0
+```
+
 ## Directives
 
 [See this documentation](https://redirection.io/documentation/developer-documentation/nginx-module#module-configuration-directives) for available directives

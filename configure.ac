@@ -18,7 +18,7 @@ AS_IF(test x$NGINX_VERSION = x, [
         AC_PATH_PROG([NGINX_BIN],[nginx],[])
         AS_IF(test x$NGINX_BIN = x,
             AC_MSG_ERROR([nginx is required.]), [
-                NGINX_VERSION=`${NGINX_BIN} -v 2>&1 | $ac_cv_path_GREP -o '[[0-9.]]*\$'`
+                NGINX_VERSION=`${NGINX_BIN} -v 2>&1 | grep -o '[[0-9.]]*\$'`
                 NGINX_CONFIGURE=`${NGINX_BIN} -V 2>&1 | grep -oP 'configure arguments: (.*)' | cut -d" " -f3-`
                 NGINX_PREFIX=`${NGINX_BIN} -V 2>&1 | grep -oP '\-\-prefix=([[^\s]]*)'| cut -d "=" -f2`
                 NGINX_MAKE_TARGET="modules"
