@@ -25,10 +25,10 @@ AS_IF(test x$NGINX_VERSION = x, [
             ]
         )
     ], [
-        NGINX_CONFIGURE="--with-cc-opt='-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt=-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now --with-compat --with-debug --with-file-aio --with-http_addition_module --with-http_auth_request_module --with-http_dav_module --with-http_degradation_module --with-http_flv_module --with-http_geoip_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_mp4_module --with-http_realip_module --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module --with-http_stub_status_module --with-http_sub_module --with-http_v2_module --with-mail --with-mail_ssl_module --with-pcre-jit --with-stream --with-stream_geoip_module --with-stream_realip_module --with-stream_ssl_module --with-stream_ssl_preread_module --with-threads"
-        NGINX_PREFIX=""
+        NGINX_CONFIGURE="--with-cc-opt='-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now' --with-debug"
+        NGINX_PREFIX="${ac_abs_confdir}/nginx-${NGINX_VERSION}/work"
         NGINX_BIN="./nginx-${NGINX_VERSION}/objs/nginx"
-        NGINX_MAKE_TARGET=""
+        NGINX_MAKE_TARGET="install"
     ]
 )
 
@@ -72,6 +72,7 @@ AC_SUBST(CFLAGS)
 AC_SUBST(LIBS)
 AC_SUBST(PATCH_FILES)
 AC_SUBST(NGINX_BIN)
+AC_SUBST(NGINX_PREFIX)
 AC_SUBST(BUILD_MODULES_DIR)
 AC_SUBST(NGINX_MAKE_TARGET)
 
@@ -79,6 +80,7 @@ AC_MSG_NOTICE([summary of build options:
     Install prefix:     ${PREFIX}
     NGINX-VERSION:      ${NGINX_VERSION}
     NGINX-CONFIGURE:    ${NGINX_CONFIGURE}
+    NGINX-PREFIX:       ${NGINX_PREFIX}
     CFLAGS:             ${CFLAGS}
     LIBS:               ${LIBS}
     MODULE_DIR:         ${MODULE_DIR}
