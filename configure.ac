@@ -19,7 +19,7 @@ AS_IF(test x$NGINX_VERSION = x, [
         AS_IF(test x$NGINX_BIN = x,
             AC_MSG_ERROR([nginx is required.]), [
                 NGINX_VERSION=`${NGINX_BIN} -v 2>&1 | grep -o '[[0-9.]]*\$'`
-                NGINX_CONFIGURE=`${NGINX_BIN} -V 2>&1 | grep -oP 'configure arguments: (.*)' | cut -d" " -f3-`
+                NGINX_CONFIGURE="--with-cc-opt='-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now' --with-debug"
                 NGINX_PREFIX=`${NGINX_BIN} -V 2>&1 | grep -oP '\-\-prefix=([[^\s]]*)'| cut -d "=" -f2`
                 NGINX_MAKE_TARGET="modules"
             ]
