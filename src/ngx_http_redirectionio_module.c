@@ -21,7 +21,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
 
 static void ngx_http_redirectionio_write_match_rule_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_read_match_rule_handler(ngx_event_t *rev, cJSON *json, const char *json_str);
-static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data);
+static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data, short level);
 
 /**
  * Commands definitions
@@ -525,8 +525,10 @@ void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json, co
     return;
 }
 
-static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data) {
-    ngx_log_error(NGX_LOG_ERR, (ngx_log_t *)data, 0, "redirectionio api error: %s", log_str);
+static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data, short level) {
+    if (level <= 1) {
+        ngx_log_error(NGX_LOG_ERR, (ngx_log_t *)data, 0, "redirectionio api error: %s", log_str);
+    }
 }
 
 
