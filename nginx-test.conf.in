@@ -30,6 +30,7 @@ http {
         access_log   off;
 
         redirectionio on;
-        redirectionio_project_key "project_key";
+        redirectionio_project_key 58056a48-664d-11e7-aeb0-0242ac130004;
+        redirectionio_pass agent:10301;
     }
 }
