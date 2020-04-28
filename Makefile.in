@@ -1,6 +1,5 @@
 # Source files. mod_auth_mellon.c must be the first file.
-SRC=src/ngx_http_json.c \
-	src/ngx_http_pool.c \
+SRC=src/ngx_http_pool.c \
 	src/ngx_http_redirectionio_module.c \
 	src/ngx_http_redirectionio_module_filter.c \
 	src/ngx_http_redirectionio_module_pool.c \

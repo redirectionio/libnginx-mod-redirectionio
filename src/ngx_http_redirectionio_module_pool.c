@@ -2,7 +2,6 @@
 
 static ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
 static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev);
-static void ngx_http_redirectionio_json_cleanup(void *data);
 
 #define ntohll(x) ((1==ntohl(1)) ? (x) : ((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 
@@ -154,7 +153,6 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     size_t                          len = 0;
     ngx_uint_t                      max_size = 8192;
     ssize_t                         readed;
-    ngx_pool_cleanup_t              *cln;
 
     c = rev->data;
     r = c->data;
@@ -166,7 +164,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
 
         ctx->connection_error = 1;
-        ctx->read_handler(rev, NULL, NULL);
+        ctx->read_handler(rev, NULL);
 
         return;
     }
@@ -175,13 +173,17 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         ngx_del_timer(rev);
     }
 
+    // Read uint32
+
+    // Read string
+
     for (;;) {
         readed = ngx_recv(c, &read, 1);
 
         if (readed == -1) { /* Error */
             ctx->connection_error = 1;
             ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL, NULL);
+            ctx->read_handler(rev, NULL);
 
             return;
         }
@@ -189,7 +191,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         if (readed == 0) { /* EOF */
             ctx->connection_error = 1;
             ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection terminated while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL, NULL);
+            ctx->read_handler(rev, NULL);
 
             return;
         }
@@ -197,7 +199,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         if (len > max_size) { /* Too big */
             ctx->connection_error = 1;
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] message too big while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL, NULL);
+            ctx->read_handler(rev, NULL);
 
             return;
         }
@@ -208,13 +210,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
             }
 
             *buffer = '\0';
-            cJSON *json = cJSON_Parse((char *)(buffer - len));
-
-            cln = ngx_pool_cleanup_add(r->pool, 0);
-            cln->handler = ngx_http_redirectionio_json_cleanup;
-            cln->data = json;
-
-            ctx->read_handler(rev, json, (const char *)(buffer - len));
+            ctx->read_handler(rev, (const char *)(buffer - len));
 
             return;
         }
@@ -227,8 +223,4 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
 static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
     return;
-}
-
-static void ngx_http_redirectionio_json_cleanup(void *data) {
-    cJSON_Delete((cJSON *)data);
 }

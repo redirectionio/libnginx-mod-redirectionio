@@ -7,7 +7,6 @@
 #include <dlfcn.h>
 #include <ngx_http_pool.h>
 #include <ngx_http_redirectionio_protocol.h>
-#include <ngx_http_json.h>
 #include <stdio.h>
 #include "redirectionio.h"
 
@@ -41,7 +40,7 @@ typedef struct {
     ngx_reslist_t               *connection_pool;
 } ngx_http_redirectionio_conf_t;
 
-typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, cJSON *json, const char *json_str);
+typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, const char *json);
 
 typedef struct {
     ngx_peer_connection_t   peer;
@@ -51,11 +50,9 @@ typedef struct {
 
 typedef struct {
     ngx_http_redirectionio_resource_t               *resource;
-    ngx_uint_t                                      matched_rule_status;
-    const char                                      *matched_rule_str;
-    cJSON                                           *matched_rule;
-
-    const char                                      *filter_id;
+    ngx_uint_t                                      matched_action_status;
+    struct REDIRECTIONIO_Action                     *action;
+    struct REDIRECTIONIO_FilterBodyAction           *body_filter;
 
     ngx_uint_t                                      connection_error;
     ngx_uint_t                                      wait_for_connection;
@@ -65,7 +62,7 @@ typedef struct {
     ngx_http_redirectionio_read_handler_t           read_handler;
 } ngx_http_redirectionio_ctx_t;
 
-void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, cJSON *json, const char *json_str);
+void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, const char *json_str);
 
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r);
 ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r);

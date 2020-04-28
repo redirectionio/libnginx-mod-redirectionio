@@ -1,11 +1,11 @@
 #include <ngx_http_redirectionio_module.h>
 
-static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(const char *filter_id, ngx_pool_t *pool, ngx_chain_t *cl);
+static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(struct REDIRECTIONIO_FilterBodyAction *body_filter, ngx_pool_t *pool, ngx_chain_t *cl);
 
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
-    const char                      *redirect;
+    unsigned short                  redirect_status_code;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -19,93 +19,29 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
         return ngx_http_redirectionio_headers_filter(r);
     }
 
-    if (ctx->matched_rule == NULL) {
-        return ngx_http_redirectionio_headers_filter(r);
-    }
-
-    if (ctx->is_redirected) {
+    if (ctx->action == NULL) {
         return ngx_http_redirectionio_headers_filter(r);
     }
 
     // Copy string
-    u_char *origin_url = ngx_pnalloc(r->pool, r->unparsed_uri.len + 1);
-    ngx_memcpy(origin_url, r->unparsed_uri.data, r->unparsed_uri.len);
-    *(origin_url + r->unparsed_uri.len) = '\0';
+    redirect_status_code = redirectionio_action_get_status_code(ctx->action, r->headers_out.status);
 
-    redirect = redirectionio_get_redirect(ctx->matched_rule_str, (const char *)origin_url, r->headers_out.status);
-
-    if (redirect == NULL) {
+    if (redirect_status_code == 0) {
         return ngx_http_redirectionio_headers_filter(r);
     }
 
-    cJSON *redirect_json = cJSON_Parse(redirect);
+    r->headers_out.status = redirect_status_code;
 
-    if (redirect_json == NULL) {
-        free((char *)redirect);
-
-        return ngx_http_redirectionio_headers_filter(r);
-    }
-
-    cJSON *location = cJSON_GetObjectItem(redirect_json, "location");
-    cJSON *status = cJSON_GetObjectItem(redirect_json, "status_code");
-
-    if (location == NULL || status == NULL) {
-        cJSON_Delete(redirect_json);
-        free((char *)redirect);
-
-        return ngx_http_redirectionio_headers_filter(r);
-    }
-
-    if (status->valueint <= 0) {
-        cJSON_Delete(redirect_json);
-        free((char *)redirect);
-
-        return ngx_http_redirectionio_headers_filter(r);
-    }
-
-    size_t target_len = strlen(location->valuestring);
-
-    if(target_len > 0) {
-        // Set target
-        r->headers_out.location = ngx_list_push(&r->headers_out.headers);
-
-        if (r->headers_out.location == NULL) {
-            cJSON_Delete(redirect_json);
-            free((char *)redirect);
-
-            return ngx_http_redirectionio_headers_filter(r);
-        }
-
-        // Copy string
-        u_char *target = ngx_pcalloc(r->pool, target_len);
-        ngx_memcpy(target, location->valuestring, target_len);
-
-        r->headers_out.location->hash = 1;
-        ngx_str_set(&r->headers_out.location->key, "Location");
-        r->headers_out.location->value.len = target_len;
-        r->headers_out.location->value.data = target;
-    }
-
-    ctx->is_redirected = 1;
-    r->headers_out.status = status->valueint;
-
-    cJSON_Delete(redirect_json);
-    free((char *)redirect);
-
-    // @TODO This will made a double body response (one from nginx / one from upstream)
-    // @TODO Find a way to cancel the current body response
     return ngx_http_special_response_handler(r, r->headers_out.status);
 }
 
 ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
-    const char                      *filter_id, *headers_str, *new_headers_str;
-    char                            *hname, *hvalue;
-    cJSON                           *headers, *header, *new_headers, *item, *name, *value;
     ngx_uint_t                      i;
     ngx_table_elt_t                 *h;
     ngx_list_part_t                 *part;
+    struct REDIRECTIONIO_HeaderMap  *first_header = NULL, *current_header = NULL;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -119,12 +55,11 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         return ngx_http_next_header_filter(r);
     }
 
-    if (ctx->matched_rule == NULL) {
+    if (ctx->action == NULL) {
         return ngx_http_next_header_filter(r);
     }
 
     // Replace headers
-    headers = cJSON_CreateArray();
     part = &r->headers_out.headers.part;
     h = part->elts;
 
@@ -144,38 +79,27 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
             continue;
         }
 
-        hname = malloc(h[i].key.len + 1);
-        ngx_memcpy(hname, h[i].key.data, h[i].key.len);
-        *(hname + h[i].key.len) = '\0';
+        current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
+        current_header->name = ngx_pcalloc(r->pool, h[i].key.len + 1);
+        current_header->value = ngx_pcalloc(r->pool, h[i].value.len + 1);
+        current_header->next = first_header;
 
-        hvalue = malloc(h[i].value.len + 1);
-        ngx_memcpy(hvalue, h[i].value.data, h[i].value.len);
-        *(hvalue + h[i].value.len) = '\0';
+        ngx_memcpy((char *)current_header->name, h[i].key.data, h[i].key.len);
+        *((char *)current_header->name + h[i].key.len) = '\0';
 
-        header = cJSON_CreateObject();
-        cJSON_AddItemToObject(header, "name", cJSON_CreateString((const char *)hname));
-        cJSON_AddItemToObject(header, "value", cJSON_CreateString((const char *)hvalue));
+        ngx_memcpy((char *)current_header->value, h[i].value.data, h[i].value.len);
+        *((char *)current_header->value + h[i].value.len) = '\0';
 
-        cJSON_AddItemToArray(headers, header);
-
-        free(hname);
-        free(hvalue);
+        first_header = current_header;
     }
 
-    headers_str = cJSON_PrintUnformatted(headers);
-    new_headers_str = redirectionio_header_filter(ctx->matched_rule_str, headers_str);
-    cJSON_Delete(headers);
-    free((char*) headers_str);
-
-    if (new_headers_str == NULL) {
+    if (first_header == NULL) {
         return ngx_http_next_header_filter(r);
     }
 
-    new_headers = cJSON_Parse(new_headers_str);
+    first_header = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, first_header, r->headers_out.status);
 
-    if (new_headers == NULL || new_headers->type != cJSON_Array) {
-        free((char*) new_headers_str);
-
+    if (first_header == NULL) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -203,43 +127,39 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         h[i].value.len = 0;
     }
 
-    item = new_headers->child;
+    current_header = first_header;
 
-    while (item != NULL) {
-        // Item is a header
-        name = cJSON_GetObjectItem(item, "name");
-        value = cJSON_GetObjectItem(item, "value");
-        item = item->next;
-
-        if (name == NULL || value == NULL || name->type != cJSON_String || value->type != cJSON_String) {
+    while (current_header != NULL) {
+        if (current_header->name == NULL || current_header->value == NULL) {
             continue;
         }
 
         h = ngx_list_push(&r->headers_out.headers);
 
         if (h == NULL) {
+            current_header = current_header->next;
+
             continue;
         }
 
         h->hash = 1;
 
-        h->key.len = strlen(name->valuestring);
+        h->key.len = strlen(current_header->name);
         h->key.data = ngx_pcalloc(r->pool, h->key.len);
-        ngx_memcpy(h->key.data, name->valuestring, h->key.len);
+        ngx_memcpy(h->key.data, current_header->name, h->key.len);
 
-        h->value.len = strlen(value->valuestring);
+        h->value.len = strlen(current_header->value);
         h->value.data = ngx_pcalloc(r->pool, h->value.len);
-        ngx_memcpy(h->value.data, value->valuestring, h->value.len);
+        ngx_memcpy(h->value.data, current_header->value, h->value.len);
+
+        current_header = current_header->next;
     }
 
-    cJSON_Delete(new_headers);
-    free((char *)new_headers_str);
-
     // Create body filter
-    filter_id = redirectionio_create_body_filter(ctx->matched_rule_str);
+    ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(ctx->action, r->headers_out.status);
 
-    if (filter_id != NULL && strlen(filter_id) != 0) {
-        ctx->filter_id = filter_id;
+    if (ctx->body_filter != NULL) {
+        // Remove content length header
         r->headers_out.content_length_n = -1;
     }
 
@@ -272,7 +192,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     }
 
     // Skip if no filter_id
-    if (ctx->filter_id == NULL) {
+    if (ctx->body_filter == NULL) {
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -285,7 +205,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     tsize = 0;
 
     for (cl = in; cl; cl = cl->next) {
-        tl = ngx_http_redirectionio_body_filter_replace(ctx->filter_id, r->pool, cl);
+        tl = ngx_http_redirectionio_body_filter_replace(ctx->body_filter, r->pool, cl);
 
         // Last link is not null, set the next of it to the current one
         if (ll != NULL) {
@@ -315,7 +235,7 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     return rc;
 }
 
-static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(const char *filter_id, ngx_pool_t *pool, ngx_chain_t *cl) {
+static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(struct REDIRECTIONIO_FilterBodyAction *body_filter, ngx_pool_t *pool, ngx_chain_t *cl) {
     ngx_chain_t                     *out = NULL, *el = NULL;
     const char                      *buf_in, *buf_out;
     char                            *memory_buf;
@@ -331,7 +251,7 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(const char *filte
     ngx_memcpy((char *)buf_in, cl->buf->pos, bsize);
     *((char *)buf_in + bsize) = '\0';
 
-    buf_out = redirectionio_body_filter(filter_id, buf_in);
+    buf_out = redirectionio_action_body_filter_filter(body_filter, buf_in);
     free((char *)buf_in);
 
     if (buf_out != NULL && strlen(buf_out) > 0) {
@@ -362,7 +282,7 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(const char *filte
     }
 
     if (cl->buf->last_buf == 1) {
-        buf_out = redirectionio_body_filter_end(filter_id);
+        buf_out = redirectionio_action_body_filter_close(body_filter);
 
         if (buf_out == NULL || strlen(buf_out) == 0) {
             if (out != NULL) {
