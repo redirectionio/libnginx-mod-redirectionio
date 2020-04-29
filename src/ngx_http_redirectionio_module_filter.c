@@ -93,10 +93,6 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         first_header = current_header;
     }
 
-    if (first_header == NULL) {
-        return ngx_http_next_header_filter(r);
-    }
-
     first_header = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, first_header, r->headers_out.status);
 
     if (first_header == NULL) {

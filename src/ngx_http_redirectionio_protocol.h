@@ -5,6 +5,12 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#define REDIRECTIONIO_PROTOCOL_VERSION_MAJOR 1
+#define REDIRECTIONIO_PROTOCOL_VERSION_MINOR 0
+
+#define REDIRECTIONIO_PROTOCOL_COMMAND_MATCH_ACTION 0
+#define REDIRECTIONIO_PROTOCOL_COMMAND_LOG 1
+
 typedef struct {
     ngx_str_t   project_key;
     ngx_str_t   uri;

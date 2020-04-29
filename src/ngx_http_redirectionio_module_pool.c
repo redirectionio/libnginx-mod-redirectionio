@@ -1,9 +1,12 @@
 #include <ngx_http_redirectionio_module.h>
 
 static ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
+
 static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev);
 
-#define ntohll(x) ((1==ntohl(1)) ? (x) : ((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
+static ngx_int_t ngx_http_redirectionio_read_uint32(ngx_connection_t *c, uint32_t *uint32);
+
+static ngx_int_t ngx_http_redirectionio_read_string(ngx_connection_t *c, char *string, ssize_t buf_size);
 
 ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
     ngx_pool_t                          *pool;
@@ -148,17 +151,15 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
     ngx_http_redirectionio_ctx_t    *ctx;
-    u_char                          *buffer;
-    u_char                          read;
-    size_t                          len = 0;
-    ngx_uint_t                      max_size = 8192;
-    ssize_t                         readed;
+    char                            *read;
+    uint32_t                        rlen;
+    ngx_int_t                       rv;
 
     c = rev->data;
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
     ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
-    buffer = (u_char *) ngx_pcalloc(r->pool, max_size);
+
 
     if (rev->timedout) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
@@ -174,53 +175,73 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     }
 
     // Read uint32
+    rv = ngx_http_redirectionio_read_uint32(c, &rlen);
+
+    if (rv != NGX_OK) {
+        ctx->connection_error = 1;
+        ctx->read_handler(rev, NULL);
+
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading length, skipping module for this request");
+
+        return;
+    }
 
     // Read string
+    read = (char *)ngx_pcalloc(r->pool, rlen + 1);
+    rv = ngx_http_redirectionio_read_string(c, read, rlen);
 
-    for (;;) {
-        readed = ngx_recv(c, &read, 1);
+    if (rv != NGX_OK) {
+        ctx->connection_error = 1;
+        ctx->read_handler(rev, NULL);
 
-        if (readed == -1) { /* Error */
-            ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading length, skipping module for this request");
 
-            return;
-        }
-
-        if (readed == 0) { /* EOF */
-            ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection terminated while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
-
-            return;
-        }
-
-        if (len > max_size) { /* Too big */
-            ctx->connection_error = 1;
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] message too big while reading, skipping module for this request");
-            ctx->read_handler(rev, NULL);
-
-            return;
-        }
-
-        if (read == '\0') { /* Message readed, push it to the current handler */
-            if (len == 0) {
-                continue;
-            }
-
-            *buffer = '\0';
-            ctx->read_handler(rev, (const char *)(buffer - len));
-
-            return;
-        }
-
-        len++;
-        *buffer = read;
-        buffer++;
+        return;
     }
+
+    *(read + rlen) = '\0';
+    ctx->read_handler(rev, (const char *)read);
 }
 
 static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
     return;
+}
+
+static ngx_int_t ngx_http_redirectionio_read_uint32(ngx_connection_t *c, uint32_t *uint32) {
+    ssize_t     srlen = sizeof(uint32_t);
+    ssize_t     serlen = sizeof(uint32_t);
+    ssize_t     sdrlen = 0;
+
+    while (sdrlen < serlen) {
+        srlen = ngx_recv(c, (u_char *)(uint32 + sdrlen), srlen);
+
+        if (srlen <= 0) {
+            return srlen;
+        }
+
+        sdrlen += srlen;
+        srlen = serlen - sdrlen;
+    }
+
+    *uint32 = ntohl(*uint32);
+
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_redirectionio_read_string(ngx_connection_t *c, char *string, ssize_t buf_size) {
+    ssize_t     srlen = buf_size;
+    ssize_t     sdrlen = 0;
+
+    while (sdrlen < buf_size) {
+        srlen = ngx_recv(c, (u_char *)(string + sdrlen), srlen);
+
+        if (srlen <= 0) {
+            return srlen;
+        }
+
+        sdrlen += srlen;
+        srlen = buf_size - sdrlen;
+    }
+
+    return NGX_OK;
 }
