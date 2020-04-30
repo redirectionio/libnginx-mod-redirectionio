@@ -1,13 +1,8 @@
-#include <ngx_http_redirectionio_protocol.h>
 #include <ngx_http_redirectionio_module.h>
-
-const char COMMAND_LOG_QUERY[] = "{ \"project_id\": \"%V\", \"request_uri\": \"%V\", \"host\": \"%V\", \"rule_id\": \"%V\", \"target\": \"%V\", \"status_code\": %d, \"user_agent\": \"%V\", \"referer\": \"%V\", \"method\": \"%V\", \"proxy\": \"%s\" }";
 
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest);
 
 static char* ngx_str_to_char(ngx_str_t *src, ngx_pool_t *pool);
-
-static ngx_table_elt_t* ngx_http_redirectionio_find_header(u_char *key, ngx_list_part_t *part);
 
 static ngx_int_t ngx_http_redirectionio_send_uint8(ngx_connection_t *c, uint8_t uint8);
 
@@ -21,14 +16,13 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
 
 static void ngx_http_redirectionio_request_cleanup(void *request);
 
-void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key) {
+void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
     ngx_int_t                       rv;
     ngx_table_elt_t                 *h;
     ngx_list_part_t                 *part;
     struct REDIRECTIONIO_HeaderMap  *first_header = NULL, *current_header = NULL;
-    struct REDIRECTIONIO_Request    *redirectionio_request;
     const char                      *request_serialized;
-    char                            *method, *uri;
+    char                            *method, *uri, *host = NULL, *scheme = "http";
     ngx_uint_t                      i;
     ngx_pool_cleanup_t              *cln;
 
@@ -60,29 +54,40 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
         first_header = current_header;
     }
 
+    #if (NGX_HTTP_SSL)
+    if (r->connection->ssl) {
+        scheme = "https";
+    }
+    #endif
+
     uri = ngx_str_to_char(&r->unparsed_uri, r->pool);
     method = ngx_str_to_char(&r->method_name, r->pool);
 
-    // Create redirection io request
-    redirectionio_request = (struct REDIRECTIONIO_Request *)redirectionio_request_create(uri, method, first_header);
+    if (r->headers_in.host != NULL) {
+        host = ngx_str_to_char(&r->headers_in.host->value, r->pool);
+    }
 
-    if (redirectionio_request == NULL) {
+    // Create redirection io request
+    ctx->request = (struct REDIRECTIONIO_Request *)redirectionio_request_create(uri, host, scheme, method, first_header);
+
+    if (ctx->request == NULL) {
         return;
     }
 
     cln = ngx_pool_cleanup_add(r->pool, 0);
 
     if (cln == NULL) {
-        redirectionio_request_drop(redirectionio_request);
+        redirectionio_request_drop(ctx->request);
+        ctx->request = NULL;
 
         return;
     }
 
-    cln->data = redirectionio_request;
+    cln->data = ctx->request;
     cln->handler = ngx_http_redirectionio_request_cleanup;
 
     // Serialize request
-    request_serialized = redirectionio_request_json_serialize(redirectionio_request);
+    request_serialized = redirectionio_request_json_serialize(ctx->request);
 
     if (request_serialized == NULL) {
         return;
@@ -113,44 +118,8 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
 }
 
 void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log) {
-    ssize_t     wlen;
-    u_char      *dst;
-    ngx_str_t   v;
+    ssize_t     wlen = strlen(log->log_serialized);
     ngx_int_t   rv;
-
-    wlen =
-        sizeof(COMMAND_LOG_QUERY)
-        + log->project_key.len
-        + log->uri.len
-        + log->host.len
-        + log->rule_id.len
-        + 3 // Status code length
-        + log->location.len
-        + log->user_agent.len
-        + log->referer.len
-        + log->method.len
-        + strlen(PROXY_VERSION_STR(PROXY_VERSION))
-        - 20 // 10 * 2 (%x) characters replaced with values
-    ;
-
-    dst = (u_char *) ngx_pcalloc(c->pool, wlen);
-
-    ngx_sprintf(
-        dst,
-        COMMAND_LOG_QUERY,
-        &log->project_key,
-        &log->uri,
-        &log->host,
-        &log->rule_id,
-        &log->location,
-        log->status,
-        &log->user_agent,
-        &log->referer,
-        &log->method,
-        PROXY_VERSION_STR(PROXY_VERSION)
-    );
-
-    v = (ngx_str_t) { wlen, dst };
 
     // Send protocol header
     rv = ngx_http_redirectionio_send_protocol_header(c, &log->project_key, REDIRECTIONIO_PROTOCOL_COMMAND_LOG);
@@ -160,24 +129,31 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
     }
 
     // Send log length
-    rv = ngx_http_redirectionio_send_uint32(c, v.len);
+    rv = ngx_http_redirectionio_send_uint32(c, wlen);
 
     if (rv != NGX_OK) {
         return;
     }
 
-    rv = ngx_http_redirectionio_send_string(c, (const char *)v.data, v.len);
+    rv = ngx_http_redirectionio_send_string(c, log->log_serialized, wlen);
 
     if (rv != NGX_OK) {
         return;
     }
 }
 
-ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id) {
-    // @TODO Replace log structure by directly the query string
+ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
+    const char                      *log_serialized;
+    ngx_http_redirectionio_log_t    *log;
 
-    ngx_table_elt_t                 *header_location;
-    ngx_http_redirectionio_log_t    *log = malloc(sizeof(ngx_http_redirectionio_log_t));
+    log_serialized = redirectionio_api_create_log_in_json(ctx->request, r->headers_out.status, ctx->response_headers, ctx->action, PROXY_VERSION_STR(PROXY_VERSION), r->start_msec);
+
+    if (log_serialized == NULL) {
+        return NULL;
+    }
+
+    log = malloc(sizeof(ngx_http_redirectionio_log_t));
+
     ngx_memzero(log, sizeof(ngx_http_redirectionio_log_t));
 
     if (log == NULL) {
@@ -185,47 +161,14 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
     }
 
     ngx_str_copy(project_key, &log->project_key);
-//    ngx_str_copy(rule_id, &log->rule_id);
-    ngx_str_copy(&r->unparsed_uri, &log->uri);
-
-    log->user_agent = (ngx_str_t)ngx_null_string;
-    log->referer = (ngx_str_t)ngx_null_string;
-    log->host = (ngx_str_t)ngx_null_string;
-    log->location = (ngx_str_t)ngx_null_string;
-    log->status = r->headers_out.status;
-
-    if (r->headers_in.user_agent != NULL) {
-        ngx_str_copy(&r->headers_in.user_agent->value, &log->user_agent);
-    }
-
-    if (r->headers_in.referer != NULL) {
-        ngx_str_copy(&r->headers_in.referer->value, &log->referer);
-    }
-
-    if (r->headers_in.host != NULL) {
-        ngx_str_copy(&r->headers_in.host->value, &log->host);
-    }
-
-    header_location = ngx_http_redirectionio_find_header((u_char *)"location", &r->headers_out.headers.part);
-
-    if (header_location != NULL) {
-        ngx_str_copy(&header_location->value, &log->location);
-    }
-
-    ngx_str_copy(&r->method_name, &log->method);
+    log->log_serialized = log_serialized;
 
     return log;
 }
 
 void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log) {
     free(log->project_key.data);
-    free(log->rule_id.data);
-    free(log->uri.data);
-    free(log->user_agent.data);
-    free(log->referer.data);
-    free(log->host.data);
-    free(log->location.data);
-    free(log->method.data);
+    free((char *)log->log_serialized);
 
     free(log);
 }
@@ -244,35 +187,6 @@ static char* ngx_str_to_char(ngx_str_t *src, ngx_pool_t *pool) {
     *((char *)str + src->len) = '\0';
 
     return str;
-}
-
-static ngx_table_elt_t* ngx_http_redirectionio_find_header(u_char *key, ngx_list_part_t *part) {
-    ngx_uint_t          i;
-    ngx_table_elt_t     *h;
-
-    h = part->elts;
-
-    for (i = 0; /* void */ ; i++) {
-        if (i >= part->nelts) {
-            if (part->next == NULL) {
-                break;
-            }
-
-            part = part->next;
-            h = part->elts;
-            i = 0;
-        }
-
-        if (h[i].hash == 0) {
-            continue;
-        }
-
-        if (h[i].key.len > 0 && ngx_strncasecmp(key, h[i].key.data, h[i].key.len) == 0) {
-            return &h[i];
-        }
-    }
-
-    return NULL;
 }
 
 static ngx_int_t ngx_http_redirectionio_send_uint8(ngx_connection_t *c, uint8_t uint8) {

@@ -2,6 +2,8 @@
 
 static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(struct REDIRECTIONIO_FilterBodyAction *body_filter, ngx_pool_t *pool, ngx_chain_t *cl);
 
+static void ngx_http_redirectionio_response_headers_cleanup(void *response_headers);
+
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
@@ -42,6 +44,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     ngx_table_elt_t                 *h;
     ngx_list_part_t                 *part;
     struct REDIRECTIONIO_HeaderMap  *first_header = NULL, *current_header = NULL;
+    ngx_pool_cleanup_t              *cln;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -99,6 +102,15 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         return ngx_http_next_header_filter(r);
     }
 
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+
+    if (cln != NULL) {
+        cln->data = first_header;
+        cln->handler = ngx_http_redirectionio_response_headers_cleanup;
+    }
+
+    ctx->response_headers = first_header;
+
     // Deactivate all old headers
     part = &r->headers_out.headers.part;
     h = part->elts;
@@ -133,14 +145,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         h = ngx_list_push(&r->headers_out.headers);
 
         if (h == NULL) {
-            current_header = first_header->next;
-
-            // Free
-            free((void *)first_header->name);
-            free((void *)first_header->value);
-            free((void *)first_header);
-
-            first_header = current_header;
+            first_header = first_header->next;
 
             continue;
         }
@@ -155,14 +160,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         h->value.data = ngx_pcalloc(r->pool, h->value.len);
         ngx_memcpy(h->value.data, first_header->value, h->value.len);
 
-        current_header = first_header->next;
-
-        // Free
-        free((void *)first_header->name);
-        free((void *)first_header->value);
-        free((void *)first_header);
-
-        first_header = current_header;
+        first_header = first_header->next;
     }
 
     // Create body filter
@@ -352,4 +350,20 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(struct REDIRECTIO
     }
 
     return cl;
+}
+
+static void ngx_http_redirectionio_response_headers_cleanup(void *response_headers) {
+    struct REDIRECTIONIO_HeaderMap  *first_header, *tmp_header;
+
+    first_header = (struct REDIRECTIONIO_HeaderMap *)response_headers;
+
+    while (first_header != NULL) {
+        tmp_header = first_header->next;
+
+        free((void *)first_header->name);
+        free((void *)first_header->value);
+        free((void *)first_header);
+
+        first_header = tmp_header;
+    }
 }

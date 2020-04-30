@@ -6,7 +6,6 @@
 #include <ngx_http.h>
 #include <dlfcn.h>
 #include <ngx_http_pool.h>
-#include <ngx_http_redirectionio_protocol.h>
 #include <stdio.h>
 #include "redirectionio.h"
 
@@ -21,6 +20,12 @@
 #define API_NOT_CALLED  0
 #define API_WAITING     1
 #define API_CALLED      2
+
+#define REDIRECTIONIO_PROTOCOL_VERSION_MAJOR 1
+#define REDIRECTIONIO_PROTOCOL_VERSION_MINOR 0
+
+#define REDIRECTIONIO_PROTOCOL_COMMAND_MATCH_ACTION 0
+#define REDIRECTIONIO_PROTOCOL_COMMAND_LOG 1
 
 #define NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE   500
 
@@ -51,7 +56,9 @@ typedef struct {
 typedef struct {
     ngx_http_redirectionio_resource_t               *resource;
     ngx_uint_t                                      matched_action_status;
+    struct REDIRECTIONIO_Request                    *request;
     struct REDIRECTIONIO_Action                     *action;
+    struct REDIRECTIONIO_HeaderMap                  *response_headers;
     struct REDIRECTIONIO_FilterBodyAction           *body_filter;
 
     ngx_uint_t                                      connection_error;
@@ -60,6 +67,11 @@ typedef struct {
 
     ngx_http_redirectionio_read_handler_t           read_handler;
 } ngx_http_redirectionio_ctx_t;
+
+typedef struct {
+    ngx_str_t   project_key;
+    const char  *log_serialized;
+} ngx_http_redirectionio_log_t;
 
 void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, const char *json_str);
 
@@ -78,5 +90,13 @@ ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *re
 ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred);
 void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_redirectionio_ctx_t *ctx, ngx_uint_t in_error);
 void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
+
+void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key);
+void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log);
+ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key);
+void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log);
+void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id);
+ngx_uint_t ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first);
+
 
 #endif

@@ -169,7 +169,9 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
 
         ctx->resource = NULL;
         ctx->matched_action_status = API_NOT_CALLED;
+        ctx->request = NULL;
         ctx->action = NULL;
+        ctx->response_headers = NULL;
         ctx->body_filter = NULL;
         ctx->connection_error = 0;
         ctx->wait_for_connection = 0;
@@ -290,11 +292,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         return NGX_DECLINED;
     }
 
-    if (ctx->action != NULL) {
-        //@TODO
-    }
-
-    log = ngx_http_redirectionio_protocol_create_log(r, &conf->project_key, NULL);
+    log = ngx_http_redirectionio_protocol_create_log(r, ctx, &conf->project_key);
 
     if (log == NULL) {
         return NGX_DECLINED;
@@ -428,7 +426,7 @@ static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) 
     ngx_add_timer(c->read, RIO_TIMEOUT);
     ctx->read_handler = ngx_http_redirectionio_read_match_action_handler;
 
-    ngx_http_redirectionio_protocol_send_match(c, r, &conf->project_key);
+    ngx_http_redirectionio_protocol_send_match(c, r, ctx, &conf->project_key);
 }
 
 static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, const char *action_serialized) {
