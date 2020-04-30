@@ -23,6 +23,8 @@ static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, const char *action_serialized);
 static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data, short level);
 
+static void ngx_http_redirectionio_action_cleanup(void *data);
+
 /**
  * Commands definitions
  */
@@ -171,7 +173,6 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->body_filter = NULL;
         ctx->connection_error = 0;
         ctx->wait_for_connection = 0;
-        ctx->is_redirected = 0;
         ctx->last_buffer_sent = 0;
         ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
 
@@ -264,7 +265,6 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     r->headers_out.status = redirect_status_code;
-    ctx->is_redirected = 1;
 
     return r->headers_out.status;
 }
@@ -435,6 +435,7 @@ static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, c
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_request_t              *r;
     ngx_connection_t                *c;
+    ngx_pool_cleanup_t              *cln;
 
     c = rev->data;
     r = c->data;
@@ -450,6 +451,15 @@ static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, c
 
     ctx->action = (struct REDIRECTIONIO_Action *)redirectionio_action_json_deserialize((char *)action_serialized);
 
+    if (ctx->action != NULL) {
+        cln = ngx_pool_cleanup_add(r->pool, 0);
+
+        if (cln != NULL) {
+            cln->data = ctx->action;
+            cln->handler = ngx_http_redirectionio_action_cleanup;
+        }
+    }
+
     ngx_http_core_run_phases(r);
 }
 
@@ -463,4 +473,6 @@ static void ngx_http_redirectionio_log_callback(const char* log_str, const void*
     }
 }
 
-
+static void ngx_http_redirectionio_action_cleanup(void *data) {
+    redirectionio_action_drop(data);
+}

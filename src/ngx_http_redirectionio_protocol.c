@@ -19,6 +19,8 @@ static ngx_int_t ngx_http_redirectionio_send_string(ngx_connection_t *c, const c
 
 static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c, ngx_str_t *project_key, uint16_t command);
 
+static void ngx_http_redirectionio_request_cleanup(void *request);
+
 void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key) {
     ngx_int_t                       rv;
     ngx_table_elt_t                 *h;
@@ -28,6 +30,7 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     const char                      *request_serialized;
     char                            *method, *uri;
     ngx_uint_t                      i;
+    ngx_pool_cleanup_t              *cln;
 
     // Create header map
     part = &r->headers_out.headers.part;
@@ -67,6 +70,17 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
         return;
     }
 
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+
+    if (cln == NULL) {
+        redirectionio_request_drop(redirectionio_request);
+
+        return;
+    }
+
+    cln->data = redirectionio_request;
+    cln->handler = ngx_http_redirectionio_request_cleanup;
+
     // Serialize request
     request_serialized = redirectionio_request_json_serialize(redirectionio_request);
 
@@ -90,6 +104,8 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
 
     // Send serialized request
     rv = ngx_http_redirectionio_send_string(c, request_serialized, strlen(request_serialized));
+
+    free((void *)request_serialized);
 
     if (rv != NGX_OK) {
         return;
@@ -384,4 +400,8 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     }
 
     return NGX_OK;
+}
+
+static void ngx_http_redirectionio_request_cleanup(void *request) {
+    redirectionio_request_drop(request);
 }

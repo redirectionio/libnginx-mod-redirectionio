@@ -125,30 +125,44 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     current_header = first_header;
 
-    while (current_header != NULL) {
-        if (current_header->name == NULL || current_header->value == NULL) {
+    while (first_header != NULL) {
+        if (first_header->name == NULL || first_header->value == NULL) {
             continue;
         }
 
         h = ngx_list_push(&r->headers_out.headers);
 
         if (h == NULL) {
-            current_header = current_header->next;
+            current_header = first_header->next;
+
+            // Free
+            free((void *)first_header->name);
+            free((void *)first_header->value);
+            free((void *)first_header);
+
+            first_header = current_header;
 
             continue;
         }
 
         h->hash = 1;
 
-        h->key.len = strlen(current_header->name);
+        h->key.len = strlen(first_header->name);
         h->key.data = ngx_pcalloc(r->pool, h->key.len);
-        ngx_memcpy(h->key.data, current_header->name, h->key.len);
+        ngx_memcpy(h->key.data, first_header->name, h->key.len);
 
-        h->value.len = strlen(current_header->value);
+        h->value.len = strlen(first_header->value);
         h->value.data = ngx_pcalloc(r->pool, h->value.len);
-        ngx_memcpy(h->value.data, current_header->value, h->value.len);
+        ngx_memcpy(h->value.data, first_header->value, h->value.len);
 
-        current_header = current_header->next;
+        current_header = first_header->next;
+
+        // Free
+        free((void *)first_header->name);
+        free((void *)first_header->value);
+        free((void *)first_header);
+
+        first_header = current_header;
     }
 
     // Create body filter
