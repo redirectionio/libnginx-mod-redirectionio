@@ -181,7 +181,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         ctx->connection_error = 1;
         ctx->read_handler(rev, NULL);
 
-        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading length, skipping module for this request");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection error while reading length, skipping module for this request");
 
         return;
     }
@@ -194,12 +194,11 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         ctx->connection_error = 1;
         ctx->read_handler(rev, NULL);
 
-        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "[redirectionio] connection error while reading length, skipping module for this request");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection error while reading length, skipping module for this request");
 
         return;
     }
 
-    *(read + rlen) = '\0';
     ctx->read_handler(rev, (const char *)read);
 }
 
@@ -242,6 +241,8 @@ static ngx_int_t ngx_http_redirectionio_read_string(ngx_connection_t *c, char *s
         sdrlen += srlen;
         srlen = buf_size - sdrlen;
     }
+
+    *(string + buf_size) = '\0';
 
     return NGX_OK;
 }

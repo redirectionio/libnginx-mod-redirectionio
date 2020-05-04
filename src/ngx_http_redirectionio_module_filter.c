@@ -4,6 +4,8 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(struct REDIRECTIO
 
 static void ngx_http_redirectionio_response_headers_cleanup(void *response_headers);
 
+static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r);
+
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
@@ -34,7 +36,7 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
 
     r->headers_out.status = redirect_status_code;
 
-    return ngx_http_special_response_handler(r, r->headers_out.status);
+    return ngx_http_redirectionio_headers_filter(r);
 }
 
 ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
@@ -99,7 +101,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     first_header = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, first_header, r->headers_out.status);
 
     if (first_header == NULL) {
-        return ngx_http_next_header_filter(r);
+        return ngx_http_redirectionio_create_filter_body(r);
     }
 
     cln = ngx_pool_cleanup_add(r->pool, 0);
@@ -161,6 +163,22 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         ngx_memcpy(h->value.data, first_header->value, h->value.len);
 
         first_header = first_header->next;
+    }
+
+    return ngx_http_redirectionio_create_filter_body(r);
+}
+
+static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r) {
+    ngx_http_redirectionio_ctx_t    *ctx;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+
+    if (ctx == NULL) {
+        return ngx_http_next_header_filter(r);
+    }
+
+    if (ctx->action == NULL) {
+        return ngx_http_next_header_filter(r);
     }
 
     // Create body filter
