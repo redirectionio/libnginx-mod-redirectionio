@@ -111,6 +111,7 @@ ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *re
 ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred) {
     ngx_http_redirectionio_log_t       *log = (ngx_http_redirectionio_log_t *)data;
     ngx_http_redirectionio_resource_t  *rr = (ngx_http_redirectionio_resource_t *)resource;
+    ngx_int_t                          rv;
 
     if (rr == NULL) {
         ngx_http_redirectionio_protocol_free_log(log);
@@ -118,9 +119,14 @@ ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *resli
         return NGX_ERROR;
     }
 
-    ngx_http_redirectionio_protocol_send_log(rr->peer.connection, log);
+    rv = ngx_http_redirectionio_protocol_send_log(rr->peer.connection, log);
     ngx_http_redirectionio_protocol_free_log(log);
-    ngx_reslist_release(reslist, rr);
+
+    if (rv != NGX_OK) {
+        ngx_reslist_invalidate(reslist, rr);
+    } else {
+        ngx_reslist_release(reslist, rr);
+    }
 
     return NGX_OK;
 }

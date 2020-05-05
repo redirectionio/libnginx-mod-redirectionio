@@ -9,7 +9,7 @@ events {
     worker_connections 1024;
 }
 
-error_log  /proc/self/fd/2 debug;
+error_log  /proc/self/fd/2;
 
 http {
     default_type application/octet-stream;

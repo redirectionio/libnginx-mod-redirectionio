@@ -37,7 +37,7 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio status code update %d (on response status code)", redirect_status_code);
 
     r->headers_out.status = redirect_status_code;
-    r->headers_out.status_line.len = 0;
+    r->headers_out.status_line = (ngx_str_t)ngx_null_string;
 
     return ngx_http_redirectionio_headers_filter(r);
 }

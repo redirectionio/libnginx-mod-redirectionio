@@ -97,6 +97,8 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     rv = ngx_http_redirectionio_send_protocol_header(c, project_key, REDIRECTIONIO_PROTOCOL_COMMAND_MATCH_ACTION);
 
     if (rv != NGX_OK) {
+        ctx->connection_error = 1;
+
         return;
     }
 
@@ -104,6 +106,8 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     rv = ngx_http_redirectionio_send_uint32(c, strlen(request_serialized));
 
     if (rv != NGX_OK) {
+        ctx->connection_error = 1;
+
         return;
     }
 
@@ -113,11 +117,13 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     free((void *)request_serialized);
 
     if (rv != NGX_OK) {
+        ctx->connection_error = 1;
+
         return;
     }
 }
 
-void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log) {
+ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log) {
     ssize_t     wlen = strlen(log->log_serialized);
     ngx_int_t   rv;
 
@@ -125,21 +131,17 @@ void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redi
     rv = ngx_http_redirectionio_send_protocol_header(c, &log->project_key, REDIRECTIONIO_PROTOCOL_COMMAND_LOG);
 
     if (rv != NGX_OK) {
-        return;
+        return rv;
     }
 
     // Send log length
     rv = ngx_http_redirectionio_send_uint32(c, wlen);
 
     if (rv != NGX_OK) {
-        return;
+        return rv;
     }
 
-    rv = ngx_http_redirectionio_send_string(c, log->log_serialized, wlen);
-
-    if (rv != NGX_OK) {
-        return;
-    }
+    return ngx_http_redirectionio_send_string(c, log->log_serialized, wlen);
 }
 
 ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {

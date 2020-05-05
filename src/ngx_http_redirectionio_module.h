@@ -92,7 +92,7 @@ void ngx_http_redirectionio_release_resource(ngx_reslist_t *reslist, ngx_http_re
 void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
 
 void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key);
-void ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log);
+ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log);
 ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key);
 void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log);
 void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id);
