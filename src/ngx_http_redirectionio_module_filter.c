@@ -34,7 +34,10 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
         return ngx_http_redirectionio_headers_filter(r);
     }
 
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio status code update %d (on response status code)", redirect_status_code);
+
     r->headers_out.status = redirect_status_code;
+    r->headers_out.status_line.len = 0;
 
     return ngx_http_redirectionio_headers_filter(r);
 }
@@ -68,6 +71,8 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     part = &r->headers_out.headers.part;
     h = part->elts;
 
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio start header filter");
+
     for (i = 0; /* void */ ; i++) {
         if (i >= part->nelts) {
             if (part->next == NULL) {
@@ -95,12 +100,17 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         ngx_memcpy((char *)current_header->value, h[i].value.data, h[i].value.len);
         *((char *)current_header->value + h[i].value.len) = '\0';
 
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add filter to send \"%s: %s\"", current_header->name, current_header->value);
+
         first_header = current_header;
     }
 
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio filtering on response status code %d", r->headers_out.status);
     first_header = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, first_header, r->headers_out.status);
 
     if (first_header == NULL) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio no filter to add");
+
         return ngx_http_redirectionio_create_filter_body(r);
     }
 
@@ -116,6 +126,8 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     // Deactivate all old headers
     part = &r->headers_out.headers.part;
     h = part->elts;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio header filter clean");
 
     for (i = 0; /* void */ ; i++) {
         if (i >= part->nelts) {
@@ -162,8 +174,12 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         h->value.data = ngx_pcalloc(r->pool, h->value.len);
         ngx_memcpy(h->value.data, first_header->value, h->value.len);
 
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add header to response \"%s: %s\"", first_header->name, first_header->value);
+
         first_header = first_header->next;
     }
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio header filter done");
 
     return ngx_http_redirectionio_create_filter_body(r);
 }

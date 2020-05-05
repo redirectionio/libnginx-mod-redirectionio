@@ -180,6 +180,8 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
 
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio init context");
+
         redirectionio_log_init_with_callback(ngx_http_redirectionio_log_callback, r->connection->log);
     }
 
@@ -226,6 +228,8 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
             return NGX_AGAIN;
         }
 
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio acquire connection from pool");
+
         status = ngx_reslist_acquire(conf->connection_pool, ngx_http_redirectionio_pool_available, r);
 
         if (status == NGX_AGAIN) {
@@ -247,6 +251,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     // if api not called call it and return ngx_again to wait for response
     if (ctx->matched_action_status == API_NOT_CALLED) {
         ctx->matched_action_status = API_WAITING;
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio call match action");
         ngx_http_redirectionio_write_match_action_handler(ctx->resource->peer.connection->write);
 
         return NGX_AGAIN;
@@ -261,6 +266,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     }
 
     redirect_status_code = redirectionio_action_get_status_code(ctx->action, 0);
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio status code before backend call %d", redirect_status_code);
 
     if (redirect_status_code == 0) {
         return NGX_DECLINED;
@@ -446,6 +452,8 @@ static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, c
 
         return;
     }
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio action received: %s", action_serialized);
 
     ctx->action = (struct REDIRECTIONIO_Action *)redirectionio_action_json_deserialize((char *)action_serialized);
 
