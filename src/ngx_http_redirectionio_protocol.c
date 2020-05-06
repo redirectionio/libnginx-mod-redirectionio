@@ -27,7 +27,7 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     ngx_pool_cleanup_t              *cln;
 
     // Create header map
-    part = &r->headers_out.headers.part;
+    part = &r->headers_in.headers.part;
     h = part->elts;
 
     for (i = 0; /* void */ ; i++) {
@@ -41,8 +41,7 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
             i = 0;
         }
 
-        // Not used skip it
-        if (h[i].hash == 0 || h[i].value.len <= 0 || h[i].key.len <= 0) {
+        if (h[i].value.len <= 0 || h[i].key.len <= 0) {
             continue;
         }
 
