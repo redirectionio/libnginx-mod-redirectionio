@@ -53,7 +53,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
-    if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
+    if (conf == NULL || conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -106,7 +106,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio filtering on response status code %d", r->headers_out.status);
-    first_header = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, first_header, r->headers_out.status);
+    first_header = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, first_header, r->headers_out.status, conf->show_rule_ids == NGX_HTTP_REDIRECTIONIO_ON);
 
     if (first_header == NULL) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio no filter to add");

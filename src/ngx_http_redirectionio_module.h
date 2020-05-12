@@ -40,6 +40,8 @@ typedef struct {
     ngx_uint_t                  enable;
     ngx_uint_t                  enable_logs;
     ngx_str_t                   project_key;
+    ngx_str_t                   scheme;
+    ngx_uint_t                  show_rule_ids;
     ngx_http_complex_value_t    *complex_target;
     ngx_url_t                   pass;
     ngx_reslist_t               *connection_pool;

@@ -22,9 +22,16 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     ngx_list_part_t                 *part;
     struct REDIRECTIONIO_HeaderMap  *first_header = NULL, *current_header = NULL;
     const char                      *request_serialized;
-    char                            *method, *uri, *host = NULL, *scheme = "http";
+    char                            *method, *uri, *host = NULL, *scheme = NULL;
     ngx_uint_t                      i;
     ngx_pool_cleanup_t              *cln;
+    ngx_http_redirectionio_conf_t   *conf;
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
+
+    if (conf == NULL) {
+        return;
+    }
 
     // Create header map
     part = &r->headers_in.headers.part;
@@ -53,11 +60,17 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
         first_header = current_header;
     }
 
-    #if (NGX_HTTP_SSL)
+    if (conf->scheme.len > 0) {
+        scheme = ngx_str_to_char(&conf->scheme, r->pool);
+    } else {
+        scheme = "http";
+    }
+
+#if (NGX_HTTP_SSL)
     if (r->connection->ssl) {
         scheme = "https";
     }
-    #endif
+#endif
 
     uri = ngx_str_to_char(&r->unparsed_uri, r->pool);
     method = ngx_str_to_char(&r->method_name, r->pool);

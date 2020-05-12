@@ -54,11 +54,27 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         ngx_http_redirectionio_enable_state
     },
     {
+        ngx_string("redirectionio_add_rule_ids_header"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        ngx_conf_set_enum_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, show_rule_ids),
+        ngx_http_redirectionio_enable_state
+    },
+    {
         ngx_string("redirectionio_pass"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
         ngx_http_redirectionio_set_url,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, pass),
+        NULL
+    },
+    {
+        ngx_string("redirectionio_scheme"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        ngx_conf_set_str_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, scheme),
         NULL
     },
     ngx_null_command /* command termination */
@@ -321,6 +337,7 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf) {
 
     conf->enable = NGX_CONF_UNSET_UINT;
     conf->enable_logs = NGX_CONF_UNSET_UINT;
+    conf->show_rule_ids = NGX_CONF_UNSET_UINT;
 
     return conf;
 }
@@ -330,7 +347,9 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     ngx_http_redirectionio_conf_t       *conf = child;
 
     ngx_conf_merge_uint_value(conf->enable_logs, prev->enable_logs, NGX_HTTP_REDIRECTIONIO_ON);
+    ngx_conf_merge_uint_value(conf->show_rule_ids, prev->show_rule_ids, NGX_HTTP_REDIRECTIONIO_OFF);
     ngx_conf_merge_str_value(conf->project_key, prev->project_key, "");
+    ngx_conf_merge_str_value(conf->scheme, prev->scheme, "");
 
     if (conf->pass.url.data == NULL) {
         if (prev->pass.url.data) {
