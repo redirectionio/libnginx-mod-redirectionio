@@ -19,13 +19,13 @@ AS_IF(test x$NGINX_VERSION = x, [
         AS_IF(test x$NGINX_BIN = x,
             AC_MSG_ERROR([nginx is required.]), [
                 NGINX_VERSION=`${NGINX_BIN} -v 2>&1 | grep -o '[[0-9.]]*\$'`
-                NGINX_CONFIGURE="--with-cc-opt='-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now' --with-debug"
+                NGINX_CONFIGURE="--with-cc-opt='-Wno-error -march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now' --with-debug"
                 NGINX_PREFIX=`${NGINX_BIN} -V 2>&1 | grep -oP '\-\-prefix=([[^\s]]*)'| cut -d "=" -f2`
                 NGINX_MAKE_TARGET="modules"
             ]
         )
     ], [
-        NGINX_CONFIGURE="--with-cc-opt='-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now' --with-debug"
+        NGINX_CONFIGURE="--with-cc-opt='-Wno-error -march=x86-64 -mtune=generic -O2 -pipe -fno-plt -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now' --with-debug"
         NGINX_PREFIX="${ac_abs_confdir}/nginx-${NGINX_VERSION}/work"
         NGINX_BIN="./nginx-${NGINX_VERSION}/objs/nginx"
         NGINX_MAKE_TARGET="install"
