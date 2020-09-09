@@ -36,7 +36,7 @@ AC_ARG_WITH([proxy_version], [AS_HELP_STRING([--with-proxy-version],
     [proxy version to output])],
     [PROXY_VERSION=$withval], [PROXY_VERSION=libnginx-mod-redirectionio:dev])
 
-PATCH_FILES=
+PATCH_FILES="patches/glibc_bug_fixed.patch"
 
 AC_ARG_ENABLE([debian-header],
     AS_HELP_STRING([--enable-debian-header], [Patch nginx source with the debian header patch.]), [
