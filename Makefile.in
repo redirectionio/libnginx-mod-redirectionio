@@ -22,7 +22,7 @@ patch: $(PATCH_FILES)
 
 .PHONY: $(PATCH_FILES)
 $(PATCH_FILES): %: nginx-@NGINX_VERSION@
-	cd nginx-@NGINX_VERSION@; patch -p1 < ../$*
+	cd nginx-@NGINX_VERSION@; patch -f -p1 < ../$* || true
 
 nginx-@NGINX_VERSION@/objs/ngx_http_redirectionio_module.so: nginx-@NGINX_VERSION@ patch
 	cd nginx-@NGINX_VERSION@; \
