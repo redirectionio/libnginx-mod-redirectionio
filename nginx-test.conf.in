@@ -37,5 +37,25 @@ http {
         location /noredirection {
             redirectionio off;
         }
+
+        location /nolog {
+            redirectionio_logs off;
+        }
+    }
+
+    server {
+        listen       10081;
+        root         /var/www;
+        access_log   off;
+
+        redirectionio on;
+        redirectionio_project_key 58056a48-664d-11e7-aeb0-0242ac130004;
+        redirectionio_pass agent:10301;
+
+        location / {
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_pass http://backend;
+        }
     }
 }

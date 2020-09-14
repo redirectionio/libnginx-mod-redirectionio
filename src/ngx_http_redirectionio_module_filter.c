@@ -73,6 +73,14 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio start header filter");
 
+    // @TODO Handle specific headers
+    // - Server
+    // - Content Type / Charset
+    // - Content Length (too touchy ?)
+    // - Last modified
+    // - Location
+    // -
+
     for (i = 0; /* void */ ; i++) {
         if (i >= part->nelts) {
             if (part->next == NULL) {
