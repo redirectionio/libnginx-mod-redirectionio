@@ -6,6 +6,10 @@ static void ngx_http_redirectionio_response_headers_cleanup(void *response_heade
 
 static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r);
 
+static ngx_int_t ngx_http_redirectionio_header_read(ngx_http_request_t *r, ngx_table_elt_t *header, struct REDIRECTIONIO_HeaderMap **first);
+
+static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_request_t *r, struct REDIRECTIONIO_HeaderMap **first);
+
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
@@ -48,7 +52,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     ngx_uint_t                      i;
     ngx_table_elt_t                 *h;
     ngx_list_part_t                 *part;
-    struct REDIRECTIONIO_HeaderMap  *first_header = NULL, *current_header = NULL;
+    struct REDIRECTIONIO_HeaderMap  *header_map = NULL;
     ngx_pool_cleanup_t              *cln;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
@@ -73,14 +77,6 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio start header filter");
 
-    // @TODO Handle specific headers
-    // - Server
-    // - Content Type / Charset
-    // - Content Length (too touchy ?)
-    // - Last modified
-    // - Location
-    // -
-
     for (i = 0; /* void */ ; i++) {
         if (i >= part->nelts) {
             if (part->next == NULL) {
@@ -97,26 +93,18 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
             continue;
         }
 
-        current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
-        current_header->name = ngx_pcalloc(r->pool, h[i].key.len + 1);
-        current_header->value = ngx_pcalloc(r->pool, h[i].value.len + 1);
-        current_header->next = first_header;
+        ngx_http_redirectionio_header_read(r, &h[i], &header_map);
 
-        ngx_memcpy((char *)current_header->name, h[i].key.data, h[i].key.len);
-        *((char *)current_header->name + h[i].key.len) = '\0';
-
-        ngx_memcpy((char *)current_header->value, h[i].value.data, h[i].value.len);
-        *((char *)current_header->value + h[i].value.len) = '\0';
-
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add filter to send \"%s: %s\"", current_header->name, current_header->value);
-
-        first_header = current_header;
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add filter to send \"%s: %s\"", header_map->name, header_map->value);
     }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio filtering on response status code %d", r->headers_out.status);
-    first_header = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, first_header, r->headers_out.status, conf->show_rule_ids == NGX_HTTP_REDIRECTIONIO_ON);
+    // Copy specific headers
+    ngx_http_redirectionio_header_content_type_read(r, &header_map);
 
-    if (first_header == NULL) {
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio filtering on response status code %d", r->headers_out.status);
+    header_map = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, header_map, r->headers_out.status, conf->show_rule_ids == NGX_HTTP_REDIRECTIONIO_ON);
+
+    if (header_map == NULL) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio no filter to add");
 
         return ngx_http_redirectionio_create_filter_body(r);
@@ -125,11 +113,11 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     cln = ngx_pool_cleanup_add(r->pool, 0);
 
     if (cln != NULL) {
-        cln->data = first_header;
+        cln->data = header_map;
         cln->handler = ngx_http_redirectionio_response_headers_cleanup;
     }
 
-    ctx->response_headers = first_header;
+    ctx->response_headers = header_map;
 
     // Deactivate all old headers
     part = &r->headers_out.headers.part;
@@ -157,34 +145,41 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         h[i].value.len = 0;
     }
 
-    current_header = first_header;
+    while (header_map != NULL) {
+        if (header_map->name == NULL || header_map->value == NULL) {
+            header_map = header_map->next;
 
-    while (first_header != NULL) {
-        if (first_header->name == NULL || first_header->value == NULL) {
+            continue;
+        }
+
+        // Handle specific headers
+        if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Type") == 0) {
+            header_map = header_map->next;
+
             continue;
         }
 
         h = ngx_list_push(&r->headers_out.headers);
 
         if (h == NULL) {
-            first_header = first_header->next;
+            header_map = header_map->next;
 
             continue;
         }
 
         h->hash = 1;
 
-        h->key.len = strlen(first_header->name);
+        h->key.len = strlen(header_map->name);
         h->key.data = ngx_pcalloc(r->pool, h->key.len);
-        ngx_memcpy(h->key.data, first_header->name, h->key.len);
+        ngx_memcpy(h->key.data, header_map->name, h->key.len);
 
-        h->value.len = strlen(first_header->value);
+        h->value.len = strlen(header_map->value);
         h->value.data = ngx_pcalloc(r->pool, h->value.len);
-        ngx_memcpy(h->value.data, first_header->value, h->value.len);
+        ngx_memcpy(h->value.data, header_map->value, h->value.len);
 
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add header to response \"%s: %s\"", first_header->name, first_header->value);
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add header to response \"%s: %s\"", header_map->name, header_map->value);
 
-        first_header = first_header->next;
+        header_map = header_map->next;
     }
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio header filter done");
@@ -408,4 +403,57 @@ static void ngx_http_redirectionio_response_headers_cleanup(void *response_heade
 
         first_header = tmp_header;
     }
+}
+
+static ngx_int_t ngx_http_redirectionio_header_read(ngx_http_request_t *r, ngx_table_elt_t *header, struct REDIRECTIONIO_HeaderMap **first) {
+    struct REDIRECTIONIO_HeaderMap  *new_header;
+
+    new_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
+    new_header->name = ngx_pcalloc(r->pool, header->key.len + 1);
+    new_header->value = ngx_pcalloc(r->pool, header->value.len + 1);
+    new_header->next = *first;
+
+    ngx_memcpy((char *)new_header->name, header->key.data, header->key.len);
+    *((char *)new_header->name + header->key.len) = '\0';
+
+    ngx_memcpy((char *)new_header->value, header->value.data, header->value.len);
+    *((char *)new_header->value + header->value.len) = '\0';
+
+    *first = new_header;
+
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_request_t *r, struct REDIRECTIONIO_HeaderMap **first) {
+    struct REDIRECTIONIO_HeaderMap  *new_header;
+    ngx_uint_t                      len = 0;
+
+    if (r->headers_out.content_type.len) {
+        len += r->headers_out.content_type.len + 1;
+
+        if (r->headers_out.content_type_len == r->headers_out.content_type.len && r->headers_out.charset.len) {
+            len += sizeof("; charset=") - 1 + r->headers_out.charset.len;
+        }
+    }
+
+    if (len == 0) {
+        return NGX_OK;
+    }
+
+    new_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
+    new_header->name = "Content-Type";
+    new_header->value = ngx_pcalloc(r->pool, len);
+    new_header->next = *first;
+
+    ngx_memcpy((char *)new_header->value, r->headers_out.content_type.data, r->headers_out.content_type.len);
+
+    if (r->headers_out.content_type_len == r->headers_out.content_type.len && r->headers_out.charset.len) {
+        ngx_memcpy((char *)new_header->value, "; charset=", sizeof("; charset=") - 1);
+        ngx_memcpy((char *)new_header->value, r->headers_out.charset.data, r->headers_out.charset.len);
+    }
+
+    *((char *)new_header->value + len) = '\0';
+    *first = new_header;
+
+    return NGX_OK;
 }
