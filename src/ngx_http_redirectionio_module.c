@@ -168,6 +168,11 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
 
+    // Disallow in sub request
+    if (r != r->main) {
+        return NGX_DECLINED;
+    }
+
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
     if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
@@ -213,6 +218,11 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_int_t                       status;
     unsigned short                  redirect_status_code;
+
+    // Disallow in sub request
+    if (r != r->main) {
+        return NGX_DECLINED;
+    }
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
@@ -297,6 +307,11 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_conf_t   *conf;
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_log_t    *log;
+
+    // Disallow in sub request
+    if (r != r->main) {
+        return NGX_DECLINED;
+    }
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
