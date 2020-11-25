@@ -40,7 +40,7 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
     {
         ngx_string("redirectionio_project_key"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
+        ngx_http_set_complex_value_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, project_key),
         NULL
@@ -72,9 +72,17 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
     {
         ngx_string("redirectionio_scheme"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
+        ngx_http_set_complex_value_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, scheme),
+        NULL
+    },
+    {
+        ngx_string("redirectionio_host"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        ngx_http_set_complex_value_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, host),
         NULL
     },
     ngx_null_command /* command termination */
@@ -198,6 +206,21 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->wait_for_connection = 0;
         ctx->last_buffer_sent = 0;
         ctx->read_handler = ngx_http_redirectionio_read_dummy_handler;
+        ctx->project_key.len = 0;
+        ctx->scheme.len = 0;
+        ctx->host.len = 0;
+
+        if (ngx_http_complex_value(r, conf->project_key, &ctx->project_key) != NGX_OK) {
+            return NGX_DECLINED;
+        }
+
+        if (conf->scheme != NULL && ngx_http_complex_value(r, conf->scheme, &ctx->scheme) != NGX_OK) {
+            return NGX_DECLINED;
+        }
+
+        if (conf->host != NULL && ngx_http_complex_value(r, conf->host, &ctx->host) != NGX_OK) {
+            return NGX_DECLINED;
+        }
 
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
@@ -329,7 +352,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         return NGX_DECLINED;
     }
 
-    log = ngx_http_redirectionio_protocol_create_log(r, ctx, &conf->project_key);
+    log = ngx_http_redirectionio_protocol_create_log(r, ctx, &ctx->project_key);
 
     if (log == NULL) {
         return NGX_DECLINED;
@@ -363,8 +386,18 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 
     ngx_conf_merge_uint_value(conf->enable_logs, prev->enable_logs, NGX_HTTP_REDIRECTIONIO_ON);
     ngx_conf_merge_uint_value(conf->show_rule_ids, prev->show_rule_ids, NGX_HTTP_REDIRECTIONIO_OFF);
-    ngx_conf_merge_str_value(conf->project_key, prev->project_key, "");
-    ngx_conf_merge_str_value(conf->scheme, prev->scheme, "");
+
+    if (conf->project_key == NULL) {
+        conf->project_key = prev->project_key;
+    }
+
+    if (conf->scheme == NULL) {
+        conf->scheme = prev->scheme;
+    }
+
+    if (conf->host == NULL) {
+        conf->host = prev->host;
+    }
 
     if (conf->pass.url.data == NULL) {
         if (prev->pass.url.data) {
@@ -413,7 +446,7 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         }
     }
 
-    if (conf->project_key.len > 0) {
+    if (conf->project_key != NULL) {
         ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_ON);
     } else {
         ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
@@ -456,17 +489,15 @@ static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) 
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
-    ngx_http_redirectionio_conf_t   *conf;
 
     c = wev->data;
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
     ngx_add_timer(c->read, RIO_TIMEOUT);
     ctx->read_handler = ngx_http_redirectionio_read_match_action_handler;
 
-    ngx_http_redirectionio_protocol_send_match(c, r, ctx, &conf->project_key);
+    ngx_http_redirectionio_protocol_send_match(c, r, ctx, &ctx->project_key);
 }
 
 static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, const char *action_serialized) {

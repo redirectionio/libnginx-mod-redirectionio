@@ -39,10 +39,10 @@
 typedef struct {
     ngx_uint_t                  enable;
     ngx_uint_t                  enable_logs;
-    ngx_str_t                   project_key;
-    ngx_str_t                   scheme;
+    ngx_http_complex_value_t    *project_key;
+    ngx_http_complex_value_t    *scheme;
+    ngx_http_complex_value_t    *host;
     ngx_uint_t                  show_rule_ids;
-    ngx_http_complex_value_t    *complex_target;
     ngx_url_t                   pass;
     ngx_reslist_t               *connection_pool;
 } ngx_http_redirectionio_conf_t;
@@ -68,6 +68,9 @@ typedef struct {
     ngx_uint_t                                      last_buffer_sent;
 
     ngx_http_redirectionio_read_handler_t           read_handler;
+    ngx_str_t                                       project_key;
+    ngx_str_t                                       scheme;
+    ngx_str_t                                       host;
 } ngx_http_redirectionio_ctx_t;
 
 typedef struct {

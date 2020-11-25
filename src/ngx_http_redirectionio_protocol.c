@@ -25,13 +25,6 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     char                            *method, *uri, *host = NULL, *scheme = NULL;
     ngx_uint_t                      i;
     ngx_pool_cleanup_t              *cln;
-    ngx_http_redirectionio_conf_t   *conf;
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
-
-    if (conf == NULL) {
-        return;
-    }
 
     // Create header map
     part = &r->headers_in.headers.part;
@@ -60,8 +53,8 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
         first_header = current_header;
     }
 
-    if (conf->scheme.len > 0) {
-        scheme = ngx_str_to_char(&conf->scheme, r->pool);
+    if (ctx->scheme.len > 0) {
+        scheme = ngx_str_to_char(&ctx->scheme, r->pool);
     } else {
         scheme = "http";
     }
@@ -75,7 +68,9 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     uri = ngx_str_to_char(&r->unparsed_uri, r->pool);
     method = ngx_str_to_char(&r->method_name, r->pool);
 
-    if (r->headers_in.host != NULL) {
+    if (ctx->host.len > 0) {
+        host = ngx_str_to_char(&ctx->host, r->pool);
+    } else if (r->headers_in.host != NULL) {
         host = ngx_str_to_char(&r->headers_in.host->value, r->pool);
     }
 

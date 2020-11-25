@@ -41,6 +41,11 @@ http {
         location /nolog {
             redirectionio_logs off;
         }
+
+        location /force-value {
+            redirectionio_host myhost.com;
+            redirectionio_scheme https;
+        }
     }
 
     server {
