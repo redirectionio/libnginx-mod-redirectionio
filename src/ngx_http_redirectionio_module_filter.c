@@ -252,6 +252,10 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     for (cl = in; cl; cl = cl->next) {
         tl = ngx_http_redirectionio_body_filter_replace(ctx->body_filter, r->pool, cl);
 
+        if (tl == NULL) {
+            continue;
+        }
+
         // Last link is not null, set the next of it to the current one
         if (ll != NULL) {
             ll->next = tl;
@@ -386,7 +390,7 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(struct REDIRECTIO
         return out;
     }
 
-    return cl;
+    return NULL;
 }
 
 static void ngx_http_redirectionio_response_headers_cleanup(void *response_headers) {
