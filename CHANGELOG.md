@@ -1,6 +1,9 @@
-## Unreleased
+## 2.0.0 - Unreleased
 
  * Send proxy version in logs
+ * Send content type in logs
+ * Use 2.0.0 version of libredirection: more matching and actions availables
+ * [BC BREAK] Use new agent protocol (only compatible with agent in 2.0 or more)
 
 ## 0.5.0 - 15-02-2019
 
@@ -22,7 +25,7 @@
  * Stability fixes:
     * Avoid potential seg fault when reloading nginx
     * Fix memory leak issues
-  
+
 ## 0.3.0 - 15-11-2018
 
  * Add connection pool to limit number of parallels connections on heavy usage
