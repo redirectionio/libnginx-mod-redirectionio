@@ -23,7 +23,7 @@ static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, const char *action_serialized);
 static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data, short level);
 
-static void ngx_http_redirectionio_action_cleanup(void *data);
+static void ngx_http_redirectionio_context_cleanup(void *context);
 
 /**
  * Commands definitions
@@ -175,6 +175,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
+    ngx_http_cleanup_t              *cln;
 
     // Disallow in sub request
     if (r != r->main) {
@@ -221,6 +222,15 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         if (conf->host != NULL && ngx_http_complex_value(r, conf->host, &ctx->host) != NGX_OK) {
             return NGX_DECLINED;
         }
+
+        cln = ngx_http_cleanup_add(r, 0);
+
+        if (cln == NULL) {
+            return NGX_DECLINED;
+        }
+
+        cln->data = ctx;
+        cln->handler = ngx_http_redirectionio_context_cleanup;
 
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
@@ -504,7 +514,6 @@ static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, c
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_request_t              *r;
     ngx_connection_t                *c;
-    ngx_pool_cleanup_t              *cln;
 
     c = rev->data;
     r = c->data;
@@ -522,15 +531,6 @@ static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, c
 
     ctx->action = (struct REDIRECTIONIO_Action *)redirectionio_action_json_deserialize((char *)action_serialized);
 
-    if (ctx->action != NULL) {
-        cln = ngx_pool_cleanup_add(r->pool, 0);
-
-        if (cln != NULL) {
-            cln->data = ctx->action;
-            cln->handler = ngx_http_redirectionio_action_cleanup;
-        }
-    }
-
     ngx_http_core_run_phases(r);
 }
 
@@ -544,6 +544,38 @@ static void ngx_http_redirectionio_log_callback(const char* log_str, const void*
     }
 }
 
-static void ngx_http_redirectionio_action_cleanup(void *data) {
-    redirectionio_action_drop(data);
+static void ngx_http_redirectionio_context_cleanup(void *context) {
+    struct REDIRECTIONIO_HeaderMap  *first_header, *tmp_header;
+    ngx_http_redirectionio_ctx_t    *ctx = (ngx_http_redirectionio_ctx_t *)context;
+
+    if (ctx->action != NULL) {
+        redirectionio_action_drop(ctx->action);
+        ctx->action = NULL;
+    }
+
+    if (ctx->request != NULL) {
+        redirectionio_request_drop(ctx->request);
+        ctx->request = NULL;
+    }
+
+    if (ctx->response_headers != NULL) {
+        first_header = (struct REDIRECTIONIO_HeaderMap *)ctx->response_headers;
+
+        while (first_header != NULL) {
+            tmp_header = first_header->next;
+
+            free((void *)first_header->name);
+            free((void *)first_header->value);
+            free((void *)first_header);
+
+            first_header = tmp_header;
+        }
+
+        ctx->response_headers = NULL;
+    }
+
+    if (ctx->body_filter != NULL) {
+        redirectionio_action_body_filter_drop(ctx->body_filter);
+        ctx->body_filter = NULL;
+    }
 }

@@ -3,7 +3,7 @@ worker_processes 4;
 daemon off;
 master_process on;
 
-load_module @abs_srcdir@/@BUILD_MODULES_DIR@/ngx_http_redirectionio_module.so;
+@LOAD_MODULE@
 
 events {
     worker_connections 1024;

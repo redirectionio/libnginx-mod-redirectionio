@@ -10,6 +10,15 @@ AS_IF(test x$TAR = xno,
     AC_MSG_ERROR([tar is required.])
 )
 
+dnl Specify --enable-static to compile nginx with static module.  By default,
+dnl we build a dynamic module.
+
+AC_ARG_ENABLE(static,
+              AC_HELP_STRING([--enable-static],
+                             [Build static module (not dynamix) [default=no]]),
+              [static_module=$enableval],
+              [static_module=no])
+
 AC_ARG_WITH([nginx_version], [AS_HELP_STRING([--with-nginx-version],
     [nginx version to use])],
     [NGINX_VERSION=$withval], [NGINX_VERSION=])
@@ -64,6 +73,15 @@ CFLAGS="$CFLAGS -Wall -g -std=c99 -DPROXY_VERSION=$PROXY_VERSION $redirectionio_
 LIBS="$LIBS $redirectionio_LIBS"
 MODULE_DIR=$NGINX_PREFIX/modules
 
+AC_MSG_CHECKING(whether to build Rust code with debugging information)
+if test "x$static_module" = "xyes" ; then
+    ADD_MODULE=--add-module
+    LOAD_MODULE=
+else
+    ADD_MODULE=--add-dynamic-module
+    LOAD_MODULE="load_module $MODULE_DIR/ngx_http_redirectionio_module.so;"
+fi
+
 AC_SUBST(PREFIX)
 AC_SUBST(NGINX_VERSION)
 AC_SUBST(NGINX_CONFIGURE)
@@ -75,6 +93,8 @@ AC_SUBST(NGINX_BIN)
 AC_SUBST(NGINX_PREFIX)
 AC_SUBST(BUILD_MODULES_DIR)
 AC_SUBST(NGINX_MAKE_TARGET)
+AC_SUBST(ADD_MODULE)
+AC_SUBST(LOAD_MODULE)
 
 AC_MSG_NOTICE([summary of build options:
     Install prefix:     ${PREFIX}
