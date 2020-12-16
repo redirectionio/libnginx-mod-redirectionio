@@ -203,6 +203,9 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->action = NULL;
         ctx->response_headers = NULL;
         ctx->body_filter = NULL;
+        ctx->action_string = NULL;
+        ctx->action_string_len = 0;
+        ctx->action_string_readed = 0;
         ctx->connection_error = 0;
         ctx->wait_for_connection = 0;
         ctx->last_buffer_sent = 0;

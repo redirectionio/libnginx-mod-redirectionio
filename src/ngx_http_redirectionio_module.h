@@ -58,6 +58,9 @@ typedef struct {
 typedef struct {
     ngx_http_redirectionio_resource_t               *resource;
     ngx_uint_t                                      matched_action_status;
+    uint32_t                                        action_string_len;
+    ssize_t                                         action_string_readed;
+    char                                            *action_string;
     struct REDIRECTIONIO_Request                    *request;
     struct REDIRECTIONIO_Action                     *action;
     struct REDIRECTIONIO_HeaderMap                  *response_headers;
