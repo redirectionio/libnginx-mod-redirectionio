@@ -431,7 +431,7 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
                 RIO_MIN_CONNECTIONS,
                 RIO_KEEP_CONNECTIONS,
                 RIO_MAX_CONNECTIONS,
-                RIO_TIMEOUT,
+                RIO_DEFAULT_TIMEOUT,
                 conf,
                 ngx_http_redirectionio_pool_construct,
                 ngx_http_redirectionio_pool_destruct
@@ -448,7 +448,7 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
             RIO_MIN_CONNECTIONS,
             RIO_KEEP_CONNECTIONS,
             RIO_MAX_CONNECTIONS,
-            RIO_TIMEOUT,
+            RIO_DEFAULT_TIMEOUT,
             conf,
             ngx_http_redirectionio_pool_construct,
             ngx_http_redirectionio_pool_destruct
@@ -507,7 +507,7 @@ static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) 
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
-    ngx_add_timer(c->read, RIO_TIMEOUT);
+    ngx_add_timer(c->read, RIO_DEFAULT_TIMEOUT);
     ctx->read_handler = ngx_http_redirectionio_read_match_action_handler;
 
     ngx_http_redirectionio_protocol_send_match(c, r, ctx, &ctx->project_key);

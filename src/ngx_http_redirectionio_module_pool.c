@@ -165,10 +165,11 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
     if (rev->timedout) {
         ctx->connection_error = 1;
-        ctx->read_handler(rev, NULL);
         ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
 
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection timeout while reading, skipping module for this request");
+
+        ctx->read_handler(rev, NULL);
 
         return;
     }
@@ -179,7 +180,6 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
         if (rv != NGX_OK) {
             ctx->connection_error = 1;
-            ctx->read_handler(rev, NULL);
             ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
 
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection error while reading length, skipping module for this request");
@@ -187,6 +187,8 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
             if (rev->timer_set) {
                 ngx_del_timer(rev);
             }
+
+            ctx->read_handler(rev, NULL);
 
             return;
         }
@@ -202,12 +204,13 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
 
     if (rv != NGX_OK) {
         ctx->connection_error = 1;
-        ctx->read_handler(rev, NULL);
         ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
 
         if (rev->timer_set) {
             ngx_del_timer(rev);
         }
+
+        ctx->read_handler(rev, NULL);
 
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] connection error while reading string: %d, skipping module for this request", rv);
 
