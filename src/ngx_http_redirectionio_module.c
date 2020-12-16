@@ -316,6 +316,19 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio call match action");
         ngx_http_redirectionio_write_match_action_handler(ctx->resource->peer.connection->write);
 
+        // Handle when direct error after write
+        if (ctx->connection_error) {
+            if (ctx->resource != NULL) {
+                ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 1);
+            }
+
+            ctx->wait_for_connection = 0;
+            ctx->resource = NULL;
+            ctx->connection_error = 0;
+
+            return NGX_DECLINED;
+        }
+
         return NGX_AGAIN;
     }
 
