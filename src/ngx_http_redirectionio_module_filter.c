@@ -8,7 +8,7 @@ static ngx_int_t ngx_http_redirectionio_header_read(ngx_http_request_t *r, ngx_t
 
 static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_request_t *r, struct REDIRECTIONIO_HeaderMap **first);
 
-static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, char **output);
+static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct REDIRECTIONIO_Buffer *output);
 
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
@@ -203,24 +203,24 @@ static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r
     return ngx_http_next_header_filter(r);
 }
 
-ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
+ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *input_chain) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
-    ngx_chain_t                     *out, *cl, *tl, *ll;
+    ngx_chain_t                     *out_chain, *current_chain, *tmp_chain, *last_chain, *previous_chain;
     size_t                          tsize;
     ngx_int_t                       rc;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
     if (conf->enable == NGX_HTTP_REDIRECTIONIO_OFF) {
-        return ngx_http_next_body_filter(r, in);
+        return ngx_http_next_body_filter(r, input_chain);
     }
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     // Skip if no context
     if (ctx == NULL) {
-        return ngx_http_next_body_filter(r, in);
+        return ngx_http_next_body_filter(r, input_chain);
     }
 
     // Discard body if last buffer already sent (avoid double body)
@@ -230,35 +230,49 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
     // Skip if no filter_id
     if (ctx->body_filter == NULL) {
-        return ngx_http_next_body_filter(r, in);
+        return ngx_http_next_body_filter(r, input_chain);
     }
 
-    if (in == NULL) {
-        return ngx_http_next_body_filter(r, in);
+    if (input_chain == NULL) {
+        return ngx_http_next_body_filter(r, input_chain);
     }
 
-    out = NULL;
-    ll = NULL;
+    out_chain = NULL;
+    last_chain = NULL;
+    previous_chain = NULL;
     tsize = 0;
 
-    for (cl = in; cl; cl = cl->next) {
-        tl = ngx_http_redirectionio_body_filter_replace(ctx, r->pool, cl);
+    for (current_chain = input_chain; current_chain; current_chain = current_chain->next) {
+        tmp_chain = ngx_http_redirectionio_body_filter_replace(ctx, r->pool, current_chain);
 
-        if (tl == NULL) {
+        // Buffered case
+        if (tmp_chain == NULL) {
             continue;
         }
 
-        // Last link is not null, set the next of it to the current one
-        if (ll != NULL) {
-            ll->next = tl;
+        // Error case: receive same thing as sended
+        if (tmp_chain == current_chain) {
+            // Add chain to the one sent, and remove from in (so it's not updated)
+            if (previous_chain == NULL) {
+                input_chain = current_chain->next;
+            } else {
+                previous_chain->next = current_chain->next;
+            }
         } else {
-            out = tl;
+            previous_chain = current_chain;
+            tsize += ngx_buf_size(current_chain->buf);
         }
 
-        ll = tl;
-        tsize += ngx_buf_size(cl->buf);
+        // Last chain is not null, set the next of it to the current one
+        if (last_chain != NULL) {
+            last_chain->next = tmp_chain;
+        } else {
+            out_chain = tmp_chain;
+        }
 
-        if (tl->buf->last_buf) {
+        last_chain = tmp_chain;
+
+        if (tmp_chain->buf->last_buf) {
             ctx->last_buffer_sent = 1;
         }
     }
@@ -266,35 +280,37 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
     rc = NGX_OK;
 
     // Everything is buffered
-    if (out != NULL) {
-        rc = ngx_http_next_body_filter(r, out);
+    if (out_chain != NULL) {
+        rc = ngx_http_next_body_filter(r, out_chain);
     }
 
-    // Fake initial chain as sent
-    in = ngx_chain_update_sent(in, tsize);
+    // Fake initial chain as sent (only if not null, as we may have used old ones already)
+    if (input_chain != NULL) {
+        input_chain = ngx_chain_update_sent(input_chain, tsize);
+    }
 
     return rc;
 }
 
 static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirectionio_ctx_t *ctx, ngx_pool_t *pool, ngx_chain_t *cl) {
     ngx_chain_t                     *out = NULL, *el = NULL;
-    const char                      *buf_in, *buf_out;
+    struct REDIRECTIONIO_Buffer     buf_in, buf_out;
     char                            *memory_buf;
     size_t                          mbsize;
 
-    if (ngx_http_redirectionio_buffer_read(cl->buf, (char **)&buf_in) != NGX_OK) {
+    if (ngx_http_redirectionio_buffer_read(cl->buf, &buf_in) != NGX_OK) {
         return cl;
     }
 
     buf_out = redirectionio_action_body_filter_filter(ctx->body_filter, buf_in);
 
-    if (buf_out != buf_in) {
-        free((char *)buf_in);
+    // Same output as input
+    if (buf_out.data == buf_in.data) {
+        return cl;
     }
 
-    if (buf_out != NULL && strlen(buf_out) > 0) {
-        mbsize = strlen(buf_out);
-
+    if (buf_out.len > 0) {
+        mbsize = buf_out.len;
         out = ngx_palloc(pool, sizeof(ngx_chain_t));
 
         if (out == NULL) {
@@ -302,8 +318,8 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
         }
 
         memory_buf = ngx_palloc(pool, mbsize);
-        ngx_memcpy(memory_buf, buf_out, mbsize);
-        free((char *)buf_out);
+        ngx_memcpy(memory_buf, buf_out.data, mbsize);
+        redirectionio_api_buffer_drop(buf_out);
 
         out->next = NULL;
         out->buf = ngx_create_temp_buf(pool, mbsize);
@@ -323,7 +339,7 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
         buf_out = redirectionio_action_body_filter_close(ctx->body_filter);
         ctx->body_filter = NULL;
 
-        if (buf_out == NULL || strlen(buf_out) == 0) {
+        if (buf_out.len == 0) {
             if (out != NULL) {
                 out->buf->last_buf = 1;
 
@@ -333,7 +349,7 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
             return cl;
         }
 
-        mbsize = strlen(buf_out);
+        mbsize = buf_out.len;
         el = ngx_palloc(pool, sizeof(ngx_chain_t));
 
         if (el == NULL) {
@@ -347,8 +363,8 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
         }
 
         memory_buf = ngx_palloc(pool, mbsize);
-        ngx_memcpy(memory_buf, buf_out, mbsize);
-        free((char *)buf_out);
+        ngx_memcpy(memory_buf, buf_out.data, mbsize);
+        redirectionio_api_buffer_drop(buf_out);
 
         el->next = NULL;
         el->buf = ngx_create_temp_buf(pool, mbsize);
@@ -432,7 +448,7 @@ static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_reques
     return NGX_OK;
 }
 
-static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, char **output) {
+static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct REDIRECTIONIO_Buffer *output) {
 #if (NGX_HAVE_SENDFILE64)
     off_t   offset;
 #else
@@ -440,7 +456,6 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, char **ou
 #endif
     size_t  bsize, readed = 0;
     ssize_t n;
-    char    *data;
 
     bsize = ngx_buf_size(buffer);
 
@@ -452,10 +467,11 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, char **ou
         return NGX_DONE;
     }
 
-    data = malloc(bsize + 1);
+    output->data = malloc(bsize);
+    output->len = bsize;
 
     if (ngx_buf_in_memory(buffer)) {
-        ngx_memcpy(data, buffer->pos, bsize);
+        ngx_memcpy(output->data, buffer->pos, bsize);
     } else if (buffer->in_file) {
 #if (NGX_HAVE_SENDFILE64)
         offset = buffer->file_pos;
@@ -463,10 +479,11 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, char **ou
         offset = (int32_t) buffer->file_pos;
 #endif
         while (readed < bsize) {
-            n = pread(buffer->file->fd, data, bsize - readed, offset + readed);
+            n = pread(buffer->file->fd, output->data, bsize - readed, offset + readed);
 
             if (n <= 0) {
-                free(data);
+                free(output->data);
+                output->len = 0;
 
                 return NGX_ERROR;
             }
@@ -474,9 +491,6 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, char **ou
             readed += n;
         }
     }
-
-    *(data + bsize) = '\0';
-    *output = data;
 
     return NGX_OK;
 }

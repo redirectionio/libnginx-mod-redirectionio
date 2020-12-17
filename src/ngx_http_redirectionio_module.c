@@ -558,6 +558,8 @@ static void ngx_http_redirectionio_log_callback(const char* log_str, const void*
     if (level <= 1) {
         ngx_log_error(NGX_LOG_ERR, (ngx_log_t *)data, 0, "redirectionio api error: %s", log_str);
     }
+
+    free((char *)log_str);
 }
 
 static void ngx_http_redirectionio_context_cleanup(void *context) {
