@@ -175,7 +175,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_conf_t   *conf;
-    ngx_http_cleanup_t              *cln;
+    ngx_pool_cleanup_t              *cln;
 
     // Disallow in sub request
     if (r != r->main) {
@@ -226,7 +226,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
             return NGX_DECLINED;
         }
 
-        cln = ngx_http_cleanup_add(r, 0);
+        cln = ngx_pool_cleanup_add(r->pool, 0);
 
         if (cln == NULL) {
             return NGX_DECLINED;
