@@ -137,11 +137,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
 
     *log_handler = ngx_http_redirectionio_log_handler;
 
-#ifdef NGX_HTTP_PRECONTENT_PHASE
-    redirect_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
-#else
-    redirect_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
-#endif
+    redirect_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_POST_ACCESS_PHASE].handlers);
 
     if (redirect_handler == NULL) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->cycle->log, 0, "redirectionio: init(): error pushing redirect handler");
@@ -151,7 +147,7 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf) {
     *redirect_handler = ngx_http_redirectionio_redirect_handler;
 
     // Create context handler -> pre access phase
-    create_ctx_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
+    create_ctx_handler = ngx_array_push(&cmcf->phases[NGX_HTTP_POST_ACCESS_PHASE].handlers);
 
     if (create_ctx_handler == NULL) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->cycle->log, 0, "redirectionio: init(): error pushing ctx handler");
