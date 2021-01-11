@@ -1,4 +1,8 @@
-## 2.0.0 - Unreleased
+## 2.0.1 - 11-01-2021
+
+ * Move redirectionio to access phase instead of pre access phase
+
+## 2.0.0 - 11-01-2021
 
  * Send proxy version in logs
  * Send content type in logs
