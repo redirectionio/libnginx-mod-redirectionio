@@ -1,3 +1,7 @@
+## 2.1.0 - 02-02-2021
+
+ * Pass the client IP address to the agent
+
 ## 2.0.1 - 11-01-2021
 
  * Move redirectionio to access phase instead of pre access phase
