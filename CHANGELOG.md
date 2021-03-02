@@ -9,9 +9,9 @@
 ## 2.0.0 - 11-01-2021
 
  * Send proxy version in logs
- * Send content type in logs
- * Use 2.0.0 version of libredirection: more matching and actions availables
- * [BC BREAK] Use new agent protocol (only compatible with agent in 2.0 or more)
+ * Send content-type in logs
+ * Use 2.0.0 version of [libredirection](https://github.com/redirectionio/libredirectionio): more matching and actions available
+ * **[BC BREAK]** New proxy protocol: please update the agent when updating the proxy to the 2.0 branch
 
 ## 0.5.0 - 15-02-2019
 
@@ -41,7 +41,7 @@
 
 ## 0.2.0 - 14-11-2018
 
- * New package name (switch from redirectionio-nginx-module to libnginx-mod-redirectionio)
+ * New package name (switch from `redirectionio-nginx-module` to `libnginx-mod-redirectionio`)
 
 ## 0.1.0 - 31-10-2018
 
