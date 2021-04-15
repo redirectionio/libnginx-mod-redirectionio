@@ -171,6 +171,10 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
         ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add header to response \"%s: %s\"", header_map->name, header_map->value);
 
+        if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Encoding") == 0) {
+            r->headers_out.content_encoding = h;
+        }
+
         header_map = header_map->next;
     }
 
