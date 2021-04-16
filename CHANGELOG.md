@@ -1,3 +1,7 @@
+## 2.1.1 - 16-04-2021
+
+ * Fix double content encoding header in some edge cases
+
 ## 2.1.0 - 02-02-2021
 
  * Pass the client IP address to the agent
