@@ -63,10 +63,10 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
     },
     {
         ngx_string("redirectionio_pass"),
-        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_1MORE,
         ngx_http_redirectionio_set_url,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_redirectionio_conf_t, pass),
+        offsetof(ngx_http_redirectionio_conf_t, server),
         NULL
     },
     {
@@ -398,6 +398,9 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf) {
     conf->enable = NGX_CONF_UNSET_UINT;
     conf->enable_logs = NGX_CONF_UNSET_UINT;
     conf->show_rule_ids = NGX_CONF_UNSET_UINT;
+    conf->server.min_conns = RIO_MIN_CONNECTIONS;
+    conf->server.max_conns = RIO_MAX_CONNECTIONS;
+    conf->server.max_conns = RIO_MAX_CONNECTIONS;
 
     return conf;
 }
@@ -421,26 +424,26 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         conf->host = prev->host;
     }
 
-    if (conf->pass.url.data == NULL) {
-        if (prev->pass.url.data) {
-            conf->pass = prev->pass;
-            // Limit number of connection pool
+    if (conf->server.pass.url.data == NULL) {
+        if (prev->server.pass.url.data) {
+            conf->server.pass = prev->server.pass;
+            // Reuse prev conn pool (limit)
             conf->connection_pool = prev->connection_pool;
         } else {
             // Should create new connection pool
-            conf->pass.url = (ngx_str_t)ngx_string("127.0.0.1:10301");
+            conf->server.pass.url = (ngx_str_t)ngx_string("127.0.0.1:10301");
 
-            if (ngx_parse_url(cf->pool, &conf->pass) != NGX_OK) {
+            if (ngx_parse_url(cf->pool, &conf->server.pass) != NGX_OK) {
                 return NGX_CONF_ERROR;
             }
 
             if(ngx_reslist_create(
                 &conf->connection_pool,
                 cf->pool,
-                RIO_MIN_CONNECTIONS,
-                RIO_KEEP_CONNECTIONS,
-                RIO_MAX_CONNECTIONS,
-                RIO_DEFAULT_TIMEOUT,
+                conf->server.min_conns,
+                conf->server.keep_conns,
+                conf->server.max_conns,
+                conf->server.timeout,
                 conf,
                 ngx_http_redirectionio_pool_construct,
                 ngx_http_redirectionio_pool_destruct
@@ -454,10 +457,10 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         if(ngx_reslist_create(
             &conf->connection_pool,
             cf->pool,
-            RIO_MIN_CONNECTIONS,
-            RIO_KEEP_CONNECTIONS,
-            RIO_MAX_CONNECTIONS,
-            RIO_DEFAULT_TIMEOUT,
+            conf->server.min_conns,
+            conf->server.keep_conns,
+            conf->server.max_conns,
+            conf->server.timeout,
             conf,
             ngx_http_redirectionio_pool_construct,
             ngx_http_redirectionio_pool_destruct
@@ -479,32 +482,83 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 }
 
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    char  *p = conf;
+    char                                *p = conf;
+    ngx_http_redirectionio_server_t     *field;
+    ngx_str_t                           *value;
+    ngx_uint_t                          i;
 
-    ngx_url_t *field;
-    ngx_str_t *value;
-    ngx_conf_post_t  *post;
+    field = (ngx_http_redirectionio_server_t *) (p + cmd->offset);
 
-    field = (ngx_url_t *) (p + cmd->offset);
-
-    if (field->url.data) {
+    if (field->pass.url.data) {
         return "is duplicate";
     }
 
     value = cf->args->elts;
 
-    field->url = value[1];
+    for (i = 2; i < cf->args->nelts; i++) {
+        if (ngx_strncmp(value[i].data, "min_conns=", 10) == 0) {
+            field->min_conns = ngx_atoi(&value[i].data[10], value[i].len - 10);
 
-    if (ngx_parse_url(cf->pool, field) != NGX_OK) {
-        return field->err;
+            if (field->min_conns == NGX_ERROR) {
+                goto invalid;
+            }
+
+            continue;
+        }
+
+        if (ngx_strncmp(value[i].data, "max_conns=", 10) == 0) {
+            field->max_conns = ngx_atoi(&value[i].data[10], value[i].len - 10);
+
+            if (field->max_conns == NGX_ERROR) {
+                goto invalid;
+            }
+
+            continue;
+        }
+
+        if (ngx_strncmp(value[i].data, "keep_conns=", 11) == 0) {
+            field->keep_conns = ngx_atoi(&value[i].data[11], value[i].len - 11);
+
+            if (field->keep_conns == NGX_ERROR) {
+                goto invalid;
+            }
+
+            continue;
+        }
+
+        if (ngx_strncmp(value[i].data, "timeout=", 8) == 0) {
+            field->timeout = (ngx_msec_t) ngx_atoi(&value[i].data[8], value[i].len - 8);
+
+            if (field->timeout == (ngx_msec_t) NGX_ERROR) {
+                goto invalid;
+            }
+
+            continue;
+        }
+
+        goto invalid;
     }
 
-    if (cmd->post) {
-        post = cmd->post;
-        return post->post_handler(cf, post, field);
+    ngx_memzero(&field->pass, sizeof(ngx_url_t));
+
+    field->pass.url = value[1];
+    field->pass.default_port = 10301;
+
+    if (ngx_parse_url(cf->pool, &field->pass) != NGX_OK) {
+        if (field->pass.err) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "%s in redirectionio server pass \"%V\"", field->pass.err, &field->pass.url);
+        }
+
+        return NGX_CONF_ERROR;
     }
 
     return NGX_CONF_OK;
+
+invalid:
+
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"", &value[i]);
+
+    return NGX_CONF_ERROR;
 }
 
 static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) {

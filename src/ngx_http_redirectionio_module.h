@@ -37,14 +37,22 @@
 #define PROXY_VERSION_STR(x) STRINGIZE(x)
 
 typedef struct {
-    ngx_uint_t                  enable;
-    ngx_uint_t                  enable_logs;
-    ngx_http_complex_value_t    *project_key;
-    ngx_http_complex_value_t    *scheme;
-    ngx_http_complex_value_t    *host;
-    ngx_uint_t                  show_rule_ids;
-    ngx_url_t                   pass;
-    ngx_reslist_t               *connection_pool;
+    ngx_url_t   pass;
+    ngx_int_t   min_conns;
+    ngx_int_t   max_conns;
+    ngx_int_t   keep_conns;
+    ngx_msec_t  timeout;
+} ngx_http_redirectionio_server_t;
+
+typedef struct {
+    ngx_uint_t                          enable;
+    ngx_uint_t                          enable_logs;
+    ngx_http_complex_value_t            *project_key;
+    ngx_http_complex_value_t            *scheme;
+    ngx_http_complex_value_t            *host;
+    ngx_uint_t                          show_rule_ids;
+    ngx_http_redirectionio_server_t     server;
+    ngx_reslist_t                       *connection_pool;
 } ngx_http_redirectionio_conf_t;
 
 typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, const char *json);

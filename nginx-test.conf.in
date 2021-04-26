@@ -32,7 +32,7 @@ http {
         redirectionio on;
         redirectionio_project_key 58056a48-664d-11e7-aeb0-0242ac130004;
         redirectionio_add_rule_ids_header on;
-        redirectionio_pass agent:10301;
+        redirectionio_pass agent:10301 min_conns=10 keep_conns=10 max_conns=1000 timeout=100;
 
         location /noredirection {
             redirectionio off;

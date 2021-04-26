@@ -27,9 +27,9 @@ ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
     }
 
     resource->pool = pool;
-    resource->peer.sockaddr = (struct sockaddr *)&conf->pass.sockaddr;
-    resource->peer.socklen = conf->pass.socklen;
-    resource->peer.name = &conf->pass.url;
+    resource->peer.sockaddr = (struct sockaddr *)&conf->server.pass.sockaddr;
+    resource->peer.socklen = conf->server.pass.socklen;
+    resource->peer.name = &conf->server.pass.url;
     resource->peer.get = ngx_http_redirectionio_get_connection;
     resource->peer.log = pool->log;
     resource->peer.log_error = NGX_ERROR_ERR;
