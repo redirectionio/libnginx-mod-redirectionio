@@ -12,6 +12,7 @@ static ngx_conf_enum_t  ngx_http_redirectionio_enable_state[] = {
 static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
@@ -83,6 +84,14 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         ngx_http_set_complex_value_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, host),
+        NULL
+    },
+    {
+        ngx_string("redirectionio_set_header"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE2,
+        ngx_http_redirectionio_set_header,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, headers_set),
         NULL
     },
     ngx_null_command /* command termination */
@@ -401,6 +410,11 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf) {
     conf->server.min_conns = RIO_MIN_CONNECTIONS;
     conf->server.max_conns = RIO_MAX_CONNECTIONS;
     conf->server.max_conns = RIO_MAX_CONNECTIONS;
+    conf->server.timeout = RIO_DEFAULT_TIMEOUT;
+
+    if (ngx_array_init(&conf->headers_set, cf->pool, 10, sizeof(ngx_http_redirectionio_header_set_t)) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
 
     return conf;
 }
@@ -408,6 +422,8 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf) {
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child) {
     ngx_http_redirectionio_conf_t       *prev = parent;
     ngx_http_redirectionio_conf_t       *conf = child;
+    ngx_uint_t                          i;
+    ngx_http_redirectionio_header_set_t *phs, *hs;
 
     ngx_conf_merge_uint_value(conf->enable_logs, prev->enable_logs, NGX_HTTP_REDIRECTIONIO_ON);
     ngx_conf_merge_uint_value(conf->show_rule_ids, prev->show_rule_ids, NGX_HTTP_REDIRECTIONIO_OFF);
@@ -422,6 +438,15 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 
     if (conf->host == NULL) {
         conf->host = prev->host;
+    }
+
+    phs = prev->headers_set.elts;
+
+    for (i = 0; i < prev->headers_set.nelts ; i++) {
+        hs = ngx_array_push(&conf->headers_set);
+
+        hs->name = phs[i].name;
+        hs->value = phs[i].value;
     }
 
     if (conf->server.pass.url.data == NULL) {
@@ -476,7 +501,6 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     } else {
         ngx_conf_merge_uint_value(conf->enable, prev->enable, NGX_HTTP_REDIRECTIONIO_OFF);
     }
-
 
     return NGX_CONF_OK;
 }
@@ -561,16 +585,72 @@ invalid:
     return NGX_CONF_ERROR;
 }
 
+static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    char                                    *p = conf;
+    ngx_array_t                             *headers_set;
+    ngx_str_t                               *value;
+    ngx_http_redirectionio_header_set_t     *h;
+    ngx_http_compile_complex_value_t        ccvk, ccvv;
+
+    headers_set = (ngx_array_t *) (p + cmd->offset);
+    h = ngx_array_push(headers_set);
+
+    if (h == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    h->name = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+
+    if (h->name == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    h->value = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+
+    if (h->value == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    value = cf->args->elts;
+
+    ngx_memzero(&ccvk, sizeof(ngx_http_compile_complex_value_t));
+    ngx_memzero(&ccvv, sizeof(ngx_http_compile_complex_value_t));
+
+    ccvk.cf = cf;
+    ccvk.value = &value[1];
+    ccvk.complex_value = h->name;
+
+    ccvv.cf = cf;
+    ccvv.value = &value[2];
+    ccvv.complex_value = h->value;
+
+    if (ngx_http_compile_complex_value(&ccvk) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"", &value[1]);
+
+        return NGX_CONF_ERROR;
+    }
+
+    if (ngx_http_compile_complex_value(&ccvv) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"", &value[2]);
+
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
+
 static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
+    ngx_http_redirectionio_conf_t   *conf;
 
     c = wev->data;
     r = c->data;
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
-    ngx_add_timer(c->read, RIO_DEFAULT_TIMEOUT);
+    ngx_add_timer(c->read, conf->server.timeout);
     ctx->read_handler = ngx_http_redirectionio_read_match_action_handler;
 
     ngx_http_redirectionio_protocol_send_match(c, r, ctx, &ctx->project_key);

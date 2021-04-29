@@ -33,6 +33,9 @@ http {
         redirectionio_project_key 58056a48-664d-11e7-aeb0-0242ac130004;
         redirectionio_add_rule_ids_header on;
         redirectionio_pass agent:10301 min_conns=10 keep_conns=10 max_conns=1000 timeout=100;
+        redirectionio_set_header X-Host-Ter $host;
+        redirectionio_set_header X-Host-Ter-2 $host;
+        redirectionio_set_header X-Host-Ter-3 YOLOLOLO;
 
         location /noredirection {
             redirectionio off;
@@ -56,6 +59,9 @@ http {
         redirectionio on;
         redirectionio_project_key 58056a48-664d-11e7-aeb0-0242ac130004;
         redirectionio_pass agent:10301;
+        redirectionio_set_header X-Host-Bis $host;
+        redirectionio_set_header X-Host-Bis-2 $host;
+        redirectionio_set_header X-Host-Bis-3 YOLOLOLO;
 
         location / {
             proxy_set_header Host $host;

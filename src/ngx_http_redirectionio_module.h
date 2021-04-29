@@ -45,6 +45,11 @@ typedef struct {
 } ngx_http_redirectionio_server_t;
 
 typedef struct {
+    ngx_http_complex_value_t    *name;
+    ngx_http_complex_value_t    *value;
+} ngx_http_redirectionio_header_set_t;
+
+typedef struct {
     ngx_uint_t                          enable;
     ngx_uint_t                          enable_logs;
     ngx_http_complex_value_t            *project_key;
@@ -52,6 +57,7 @@ typedef struct {
     ngx_http_complex_value_t            *host;
     ngx_uint_t                          show_rule_ids;
     ngx_http_redirectionio_server_t     server;
+    ngx_array_t                         headers_set;
     ngx_reslist_t                       *connection_pool;
 } ngx_http_redirectionio_conf_t;
 

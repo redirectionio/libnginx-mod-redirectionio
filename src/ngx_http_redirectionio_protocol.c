@@ -15,15 +15,21 @@ static ngx_int_t ngx_http_redirectionio_send_string(ngx_connection_t *c, const c
 static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c, ngx_str_t *project_key, uint16_t command);
 
 void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
-    ngx_int_t                       rv;
-    ngx_table_elt_t                 *h;
-    ngx_list_part_t                 *part;
-    struct REDIRECTIONIO_HeaderMap  *first_header = NULL, *current_header = NULL;
-    const char                      *request_serialized;
-    char                            *method, *uri, *host = NULL, *scheme = NULL;
-    ngx_uint_t                      i;
+    ngx_int_t                           rv;
+    ngx_table_elt_t                     *h;
+    ngx_list_part_t                     *part;
+    struct REDIRECTIONIO_HeaderMap      *first_header = NULL, *current_header = NULL;
+    const char                          *request_serialized;
+    char                                *method, *uri, *host = NULL, *scheme = NULL;
+    ngx_uint_t                          i;
+    ngx_http_redirectionio_conf_t       *conf;
+    ngx_http_redirectionio_header_set_t *hs;
+    ngx_str_t                           hsn, hsv;
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_redirectionio_module);
 
     // Create header map
+    // First add request headers
     part = &r->headers_in.headers.part;
     h = part->elts;
 
@@ -45,6 +51,26 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
         current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
         current_header->name = ngx_str_to_char(&h[i].key, r->pool);
         current_header->value = ngx_str_to_char(&h[i].value, r->pool);
+        current_header->next = first_header;
+
+        first_header = current_header;
+    }
+
+    // Then set headers
+    hs = conf->headers_set.elts;
+
+    for (i = 0; i < conf->headers_set.nelts ; i++) {
+        if (ngx_http_complex_value(r, hs[i].name, &hsn) != NGX_OK) {
+            continue;
+        }
+
+        if (ngx_http_complex_value(r, hs[i].value, &hsv) != NGX_OK) {
+            continue;
+        }
+
+        current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
+        current_header->name = ngx_str_to_char(&hsn, r->pool);
+        current_header->value = ngx_str_to_char(&hsv, r->pool);
         current_header->next = first_header;
 
         first_header = current_header;
