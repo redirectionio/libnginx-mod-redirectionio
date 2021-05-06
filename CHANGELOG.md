@@ -1,3 +1,8 @@
+## 2.2.0 - 06-05-2021
+
+ * added the `redirectionio_set_header` directive - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-set-header))
+ * added connection pool management options to the `redirectionio_pass` directive: `min_conns`, `keep_conns`, `max_conns` and `timeout` - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-pass))
+
 ## 2.1.1 - 16-04-2021
 
  * Fix double content encoding header in some edge cases
