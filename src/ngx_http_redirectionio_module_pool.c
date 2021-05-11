@@ -2,11 +2,13 @@
 
 static ngx_int_t ngx_http_redirectionio_get_connection(ngx_peer_connection_t *pc, void *data);
 
-static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev);
-
 static ngx_int_t ngx_http_redirectionio_read_uint32(ngx_connection_t *c, uint32_t *uint32);
 
 static ngx_int_t ngx_http_redirectionio_read_string(ngx_connection_t *c, char *string, ssize_t buf_size, ssize_t *readed);
+
+static ngx_int_t ngx_http_redirectionio_write_log(ngx_event_t *wev);
+
+static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev);
 
 ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
     ngx_pool_t                          *pool;
@@ -33,6 +35,7 @@ ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
     resource->peer.get = ngx_http_redirectionio_get_connection;
     resource->peer.log = pool->log;
     resource->peer.log_error = NGX_ERROR_ERR;
+    resource->data = NULL;
 
     rc = ngx_event_connect_peer(&resource->peer);
 
@@ -108,10 +111,45 @@ ngx_int_t ngx_http_redirectionio_pool_available(ngx_reslist_t *reslist, void *re
     return NGX_OK;
 }
 
+static ngx_int_t ngx_http_redirectionio_write_log(ngx_event_t *wev) {
+    ngx_connection_t                    *c;
+    ngx_http_redirectionio_log_t        *log;
+
+    c = wev->data;
+    log = c->data;
+
+    return ngx_http_redirectionio_protocol_send_log(c, log);
+}
+
+static void ngx_http_redirectionio_write_log_handler(ngx_event_t *wev) {
+    ngx_int_t                           rv;
+    ngx_http_redirectionio_log_t        *log;
+    ngx_connection_t                    *c;
+
+    c = wev->data;
+    log = c->data;
+
+    wev->handler = ngx_http_redirectionio_dummy_handler;
+    rv = ngx_http_redirectionio_write_log(wev);
+
+    if (rv == NGX_AGAIN) {
+        wev->handler = ngx_http_redirectionio_write_log_handler;
+
+        return;
+    }
+
+    if (rv != NGX_OK) {
+        ngx_reslist_invalidate(log->reslist, log->resource);
+    } else {
+        ngx_reslist_release(log->reslist, log->resource);
+    }
+
+    ngx_http_redirectionio_protocol_free_log(log);
+}
+
 ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *reslist, void *resource, void *data, ngx_int_t deferred) {
     ngx_http_redirectionio_log_t       *log = (ngx_http_redirectionio_log_t *)data;
     ngx_http_redirectionio_resource_t  *rr = (ngx_http_redirectionio_resource_t *)resource;
-    ngx_int_t                          rv;
 
     if (rr == NULL) {
         ngx_http_redirectionio_protocol_free_log(log);
@@ -119,14 +157,12 @@ ngx_int_t ngx_http_redirectionio_pool_available_log_handler(ngx_reslist_t *resli
         return NGX_ERROR;
     }
 
-    rv = ngx_http_redirectionio_protocol_send_log(rr->peer.connection, log);
-    ngx_http_redirectionio_protocol_free_log(log);
+    log->reslist = reslist;
+    log->resource = rr;
 
-    if (rv != NGX_OK) {
-        ngx_reslist_invalidate(reslist, rr);
-    } else {
-        ngx_reslist_release(reslist, rr);
-    }
+    rr->peer.connection->data = log;
+
+    ngx_http_redirectionio_write_log_handler(rr->peer.connection->write);
 
     return NGX_OK;
 }
@@ -225,7 +261,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
     ctx->read_handler(rev, (const char *)ctx->action_string);
 }
 
-static void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
+void ngx_http_redirectionio_dummy_handler(ngx_event_t *wev) {
     return;
 }
 

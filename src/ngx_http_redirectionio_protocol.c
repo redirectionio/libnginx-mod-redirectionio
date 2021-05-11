@@ -14,7 +14,7 @@ static ngx_int_t ngx_http_redirectionio_send_string(ngx_connection_t *c, const c
 
 static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c, ngx_str_t *project_key, uint16_t command);
 
-void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
+ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
     ngx_int_t                           rv;
     ngx_table_elt_t                     *h;
     ngx_list_part_t                     *part;
@@ -101,23 +101,27 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     ctx->request = (struct REDIRECTIONIO_Request *)redirectionio_request_create(uri, host, scheme, method, first_header);
 
     if (ctx->request == NULL) {
-        return;
+        return NGX_ERROR;
     }
 
     // Serialize request
     request_serialized = redirectionio_request_json_serialize(ctx->request);
 
     if (request_serialized == NULL) {
-        return;
+        return NGX_ERROR;
     }
 
     // Send protocol header
     rv = ngx_http_redirectionio_send_protocol_header(c, project_key, REDIRECTIONIO_PROTOCOL_COMMAND_MATCH_ACTION);
 
+    if (rv == NGX_AGAIN) {
+        return rv;
+    }
+
     if (rv != NGX_OK) {
         ctx->connection_error = 1;
 
-        return;
+        return NGX_ERROR;
     }
 
     // Send serialized request length
@@ -126,7 +130,7 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     if (rv != NGX_OK) {
         ctx->connection_error = 1;
 
-        return;
+        return NGX_ERROR;
     }
 
     // Send serialized request
@@ -135,10 +139,13 @@ void ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_re
     free((void *)request_serialized);
 
     if (rv != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending request: %d", rv);
         ctx->connection_error = 1;
 
-        return;
+        return NGX_ERROR;
     }
+
+    return NGX_OK;
 }
 
 ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log) {
@@ -148,18 +155,28 @@ ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http
     // Send protocol header
     rv = ngx_http_redirectionio_send_protocol_header(c, &log->project_key, REDIRECTIONIO_PROTOCOL_COMMAND_LOG);
 
-    if (rv != NGX_OK) {
+    if (rv == NGX_AGAIN) {
         return rv;
+    }
+
+    if (rv != NGX_OK) {
+        return NGX_ERROR;
     }
 
     // Send log length
     rv = ngx_http_redirectionio_send_uint32(c, wlen);
 
     if (rv != NGX_OK) {
-        return rv;
+        return NGX_ERROR;
     }
 
-    return ngx_http_redirectionio_send_string(c, log->log_serialized, wlen);
+    rv = ngx_http_redirectionio_send_string(c, log->log_serialized, wlen);
+
+    if (rv != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
 }
 
 ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
@@ -294,8 +311,12 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     // Send protocol major version
     rv = ngx_http_redirectionio_send_uint8(c, REDIRECTIONIO_PROTOCOL_VERSION_MAJOR);
 
+    if (rv == NGX_AGAIN) {
+        return rv;
+    }
+
     if (rv != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending protocol major version");
+        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending protocol major version: %d", rv);
 
         return rv;
     }
@@ -304,7 +325,7 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     rv = ngx_http_redirectionio_send_uint8(c, REDIRECTIONIO_PROTOCOL_VERSION_MINOR);
 
     if (rv != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending protocol minor version");
+        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending protocol minor version: %d", rv);
 
         return rv;
     }
@@ -313,7 +334,7 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     rv = ngx_http_redirectionio_send_uint8(c, (unsigned char)project_key->len);
 
     if (rv != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending project key length");
+        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending project key length: %d", rv);
 
         return rv;
     }
@@ -321,7 +342,7 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     rv = ngx_http_redirectionio_send_string(c, (const char *)project_key->data, project_key->len);
 
     if (rv != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending project key");
+        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending project key: %d", rv);
 
         return rv;
     }
@@ -329,7 +350,7 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     rv = ngx_http_redirectionio_send_uint16(c, command);
 
     if (rv != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending command");
+        ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending command: %d", rv);
 
         return rv;
     }

@@ -20,6 +20,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
 static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
 
+static ngx_int_t ngx_http_redirectionio_write_match_action(ngx_event_t *wev);
 static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, const char *action_serialized);
 static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data, short level);
@@ -319,10 +320,17 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     if (ctx->matched_action_status == API_NOT_CALLED) {
         ctx->matched_action_status = API_WAITING;
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio call match action");
-        ngx_http_redirectionio_write_match_action_handler(ctx->resource->peer.connection->write);
+        status = ngx_http_redirectionio_write_match_action(ctx->resource->peer.connection->write);
+
+        if (status == NGX_AGAIN) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] send again");
+            ctx->resource->peer.connection->write->handler = ngx_http_redirectionio_write_match_action_handler;
+
+            return NGX_AGAIN;
+        }
 
         // Handle when direct error after write
-        if (ctx->connection_error) {
+        if (status != NGX_OK || ctx->connection_error) {
             if (ctx->resource != NULL) {
                 ngx_http_redirectionio_release_resource(conf->connection_pool, ctx, 1);
             }
@@ -639,7 +647,7 @@ static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cm
     return NGX_CONF_OK;
 }
 
-static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) {
+static ngx_int_t ngx_http_redirectionio_write_match_action(ngx_event_t *wev) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_connection_t                *c;
     ngx_http_request_t              *r;
@@ -653,7 +661,18 @@ static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) 
     ngx_add_timer(c->read, conf->server.timeout);
     ctx->read_handler = ngx_http_redirectionio_read_match_action_handler;
 
-    ngx_http_redirectionio_protocol_send_match(c, r, ctx, &ctx->project_key);
+    return ngx_http_redirectionio_protocol_send_match(c, r, ctx, &ctx->project_key);
+}
+
+static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev) {
+    ngx_int_t   rv;
+
+    wev->handler = ngx_http_redirectionio_dummy_handler;
+    rv = ngx_http_redirectionio_write_match_action(wev);
+
+    if (rv == NGX_AGAIN) {
+        wev->handler = ngx_http_redirectionio_write_match_action_handler;
+    }
 }
 
 static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, const char *action_serialized) {
