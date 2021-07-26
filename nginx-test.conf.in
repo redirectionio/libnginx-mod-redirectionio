@@ -36,6 +36,7 @@ http {
         redirectionio_set_header X-Host-Ter $host;
         redirectionio_set_header X-Host-Ter-2 $host;
         redirectionio_set_header X-Host-Ter-3 YOLOLOLO;
+        redirectionio_trusted_proxies "127.0.0.1,172.18.0.0/24";
 
         location /noredirection {
             redirectionio off;
@@ -62,6 +63,7 @@ http {
         redirectionio_set_header X-Host-Bis $host;
         redirectionio_set_header X-Host-Bis-2 $host;
         redirectionio_set_header X-Host-Bis-3 YOLOLOLO;
+        redirectionio_trusted_proxies "127.0.0.1,172.18.0.0/24";
 
         location / {
             proxy_set_header Host $host;

@@ -60,6 +60,7 @@ typedef struct {
     ngx_http_redirectionio_server_t     server;
     ngx_array_t                         headers_set;
     ngx_reslist_t                       *connection_pool;
+    struct REDIRECTIONIO_TrustedProxies *trusted_proxies;
 } ngx_http_redirectionio_conf_t;
 
 typedef void (*ngx_http_redirectionio_read_handler_t)(ngx_event_t *rev, const char *json);
@@ -125,5 +126,6 @@ void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log)
 void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id);
 ngx_uint_t ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first);
 
+char* ngx_http_redirectionio_str_to_char(ngx_str_t *src, ngx_pool_t *pool);
 
 #endif

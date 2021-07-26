@@ -2,8 +2,6 @@
 
 static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest);
 
-static char* ngx_str_to_char(ngx_str_t *src, ngx_pool_t *pool);
-
 static ngx_int_t ngx_http_redirectionio_send_uint8(ngx_connection_t *c, uint8_t uint8);
 
 static ngx_int_t ngx_http_redirectionio_send_uint16(ngx_connection_t *c, uint16_t uint16);
@@ -20,7 +18,7 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     ngx_list_part_t                     *part;
     struct REDIRECTIONIO_HeaderMap      *first_header = NULL, *current_header = NULL;
     const char                          *request_serialized;
-    char                                *method, *uri, *host = NULL, *scheme = NULL;
+    char                                *method, *uri, *host = NULL, *scheme = NULL, *client_ip;
     ngx_uint_t                          i;
     ngx_http_redirectionio_conf_t       *conf;
     ngx_http_redirectionio_header_set_t *hs;
@@ -49,8 +47,8 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
         }
 
         current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
-        current_header->name = ngx_str_to_char(&h[i].key, r->pool);
-        current_header->value = ngx_str_to_char(&h[i].value, r->pool);
+        current_header->name = ngx_http_redirectionio_str_to_char(&h[i].key, r->pool);
+        current_header->value = ngx_http_redirectionio_str_to_char(&h[i].value, r->pool);
         current_header->next = first_header;
 
         first_header = current_header;
@@ -69,15 +67,15 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
         }
 
         current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
-        current_header->name = ngx_str_to_char(&hsn, r->pool);
-        current_header->value = ngx_str_to_char(&hsv, r->pool);
+        current_header->name = ngx_http_redirectionio_str_to_char(&hsn, r->pool);
+        current_header->value = ngx_http_redirectionio_str_to_char(&hsv, r->pool);
         current_header->next = first_header;
 
         first_header = current_header;
     }
 
     if (ctx->scheme.len > 0) {
-        scheme = ngx_str_to_char(&ctx->scheme, r->pool);
+        scheme = ngx_http_redirectionio_str_to_char(&ctx->scheme, r->pool);
     } else {
         scheme = "http";
     }
@@ -88,13 +86,13 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     }
 #endif
 
-    uri = ngx_str_to_char(&r->unparsed_uri, r->pool);
-    method = ngx_str_to_char(&r->method_name, r->pool);
+    uri = ngx_http_redirectionio_str_to_char(&r->unparsed_uri, r->pool);
+    method = ngx_http_redirectionio_str_to_char(&r->method_name, r->pool);
 
     if (ctx->host.len > 0) {
-        host = ngx_str_to_char(&ctx->host, r->pool);
+        host = ngx_http_redirectionio_str_to_char(&ctx->host, r->pool);
     } else if (r->headers_in.host != NULL) {
-        host = ngx_str_to_char(&r->headers_in.host->value, r->pool);
+        host = ngx_http_redirectionio_str_to_char(&r->headers_in.host->value, r->pool);
     }
 
     // Create redirection io request
@@ -103,6 +101,9 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     if (ctx->request == NULL) {
         return NGX_ERROR;
     }
+
+    client_ip = ngx_http_redirectionio_str_to_char(&r->connection->addr_text, r->pool);
+    redirectionio_request_set_remote_addr(ctx->request, (const char *)client_ip, conf->trusted_proxies);
 
     // Serialize request
     request_serialized = redirectionio_request_json_serialize(ctx->request);
@@ -183,7 +184,7 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
     const char                      *client_ip, *log_serialized;
     ngx_http_redirectionio_log_t    *log;
 
-    client_ip = ngx_str_to_char(&r->connection->addr_text, r->pool);
+    client_ip = ngx_http_redirectionio_str_to_char(&r->connection->addr_text, r->pool);
     log_serialized = redirectionio_api_create_log_in_json(ctx->request, r->headers_out.status, ctx->response_headers, ctx->action, PROXY_VERSION_STR(PROXY_VERSION), r->start_msec, client_ip);
 
     if (log_serialized == NULL) {
@@ -215,16 +216,6 @@ static void ngx_str_copy(ngx_str_t *src, ngx_str_t *dest) {
     dest->len = src->len;
     dest->data = malloc(dest->len);
     ngx_memcpy(dest->data, src->data, dest->len);
-}
-
-static char* ngx_str_to_char(ngx_str_t *src, ngx_pool_t *pool) {
-    char *str;
-
-    str = (char *)ngx_pcalloc(pool, src->len + 1);
-    ngx_memcpy(str, src->data, src->len);
-    *((char *)str + src->len) = '\0';
-
-    return str;
 }
 
 static ngx_int_t ngx_http_redirectionio_send_uint8(ngx_connection_t *c, uint8_t uint8) {

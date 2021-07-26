@@ -13,6 +13,7 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf);
 static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_redirectionio_set_trusted_proxies(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
@@ -91,6 +92,14 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         ngx_string("redirectionio_set_header"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE2,
         ngx_http_redirectionio_set_header,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, headers_set),
+        NULL
+    },
+    {
+        ngx_string("redirectionio_trusted_proxies"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        ngx_http_redirectionio_set_trusted_proxies,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, headers_set),
         NULL
@@ -448,6 +457,10 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
         conf->host = prev->host;
     }
 
+    if (conf->trusted_proxies == NULL) {
+        conf->trusted_proxies = prev->trusted_proxies;
+    }
+
     phs = prev->headers_set.elts;
 
     for (i = 0; i < prev->headers_set.nelts ; i++) {
@@ -647,6 +660,19 @@ static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cm
     return NGX_CONF_OK;
 }
 
+static char *ngx_http_redirectionio_set_trusted_proxies(ngx_conf_t *cf, ngx_command_t *cmd, void *c) {
+    ngx_http_redirectionio_conf_t           *conf = c;
+    char                                    *trusted_proxies_str;
+    ngx_str_t                               *value;
+
+    value = cf->args->elts;
+    trusted_proxies_str = ngx_http_redirectionio_str_to_char(&value[1], cf->pool);
+
+    conf->trusted_proxies = (struct REDIRECTIONIO_TrustedProxies *) redirectionio_trusted_proxies_create((const char *)trusted_proxies_str);
+
+    return NGX_CONF_OK;
+}
+
 static ngx_int_t ngx_http_redirectionio_write_match_action(ngx_event_t *wev) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_connection_t                *c;
@@ -745,4 +771,14 @@ static void ngx_http_redirectionio_context_cleanup(void *context) {
         redirectionio_action_body_filter_drop(ctx->body_filter);
         ctx->body_filter = NULL;
     }
+}
+
+char* ngx_http_redirectionio_str_to_char(ngx_str_t *src, ngx_pool_t *pool) {
+    char *str;
+
+    str = (char *)ngx_pcalloc(pool, src->len + 1);
+    ngx_memcpy(str, src->data, src->len);
+    *((char *)str + src->len) = '\0';
+
+    return str;
 }
