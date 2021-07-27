@@ -378,6 +378,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_conf_t   *conf;
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_redirectionio_log_t    *log;
+    bool                            should_log;
 
     // Disallow in sub request
     if (r != r->main) {
@@ -390,13 +391,15 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         return NGX_DECLINED;
     }
 
-    if (conf->enable_logs == NGX_HTTP_REDIRECTIONIO_OFF) {
-        return NGX_DECLINED;
-    }
-
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     if (ctx == NULL) {
+        return NGX_DECLINED;
+    }
+
+    should_log = redirectionio_action_should_log_request(ctx->action, conf->enable_logs != NGX_HTTP_REDIRECTIONIO_OFF, r->headers_out.status);
+
+    if (!should_log) {
         return NGX_DECLINED;
     }
 
