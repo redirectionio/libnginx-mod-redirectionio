@@ -1,3 +1,11 @@
+## 2.2.2 - 22-09-2021
+
+ * new release, for new distributions (debian 11 bullseye, and latest ubuntu)
+
+## 2.2.1 - 11-05-2021
+
+ * fix rare occurrence of agent socket not available for writing after starting the connection
+
 ## 2.2.0 - 06-05-2021
 
  * added the `redirectionio_set_header` directive - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-set-header))
