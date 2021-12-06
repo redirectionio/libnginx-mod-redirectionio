@@ -463,7 +463,14 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct RE
 
     bsize = ngx_buf_size(buffer);
 
-    if (bsize <= 0) {
+    if (bsize == 0) {
+        output->data = NULL;
+        output->len = 0;
+
+        return NGX_OK;
+    }
+
+    if (bsize < 0) {
         return NGX_DONE;
     }
 

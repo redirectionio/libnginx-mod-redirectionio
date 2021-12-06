@@ -371,7 +371,10 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
 
     r->headers_out.status = redirect_status_code;
 
-    return r->headers_out.status;
+    // Force special response for 2XX request
+    ngx_http_finalize_request(r, ngx_http_special_response_handler(r, r->headers_out.status));
+
+    return NGX_DONE;
 }
 
 static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
