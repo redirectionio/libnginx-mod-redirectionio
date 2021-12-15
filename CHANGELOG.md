@@ -1,3 +1,11 @@
+## 2.3.0 - Unreleased
+
+ * Allow configuring `redirectionio_trusted_proxies` for correct ip trigger matching
+ * Support ip trigger (require 2.3 agent)
+ * Support serving a txt file (require 2.3 agent)
+ * Support disabling log redirection with a rule (require 2.3 agent)
+ * Fix a bug when a rule was serving a 200 response without calling backend
+
 ## 2.2.2 - 22-09-2021
 
  * new release, for new distributions (debian 11 bullseye, and latest ubuntu)
