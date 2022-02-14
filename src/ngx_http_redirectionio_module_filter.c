@@ -474,10 +474,6 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct RE
         return NGX_OK;
     }
 
-    if (bsize < 0) {
-        return NGX_DONE;
-    }
-
     if (!ngx_buf_in_memory(buffer) && !buffer->in_file) {
         return NGX_DONE;
     }
