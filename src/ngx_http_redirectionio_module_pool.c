@@ -53,6 +53,10 @@ ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
         ngx_log_error(NGX_LOG_ALERT, pool->log, ngx_socket_errno,  "setsockopt(TCP_NODELAY) %V failed, ignored", &resource->peer.connection->addr_text);
     }
 
+    if (setsockopt(resource->peer.connection->fd, IPPROTO_TCP, SO_KEEPALIVE, (const void *) &tcp_nodelay, sizeof(int)) == -1) {
+        ngx_log_error(NGX_LOG_ALERT, pool->log, ngx_socket_errno,  "setsockopt(SO_KEEPALIVE) %V failed, ignored", &resource->peer.connection->addr_text);
+    }
+
     resource->peer.connection->pool = pool;
     resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
     resource->peer.connection->write->handler = ngx_http_redirectionio_dummy_handler;

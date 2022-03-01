@@ -1,5 +1,9 @@
 #include <ngx_http_redirectionio_module.h>
 
+ngx_http_output_header_filter_pt    ngx_http_next_header_filter;
+ngx_http_output_body_filter_pt      ngx_http_next_body_filter;
+ngx_module_t                        ngx_http_redirectionio_module;
+
 /**
  * List of values for boolean
  */

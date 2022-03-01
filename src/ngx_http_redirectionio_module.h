@@ -108,9 +108,9 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r);
 
 ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
 
-ngx_http_output_header_filter_pt    ngx_http_next_header_filter;
-ngx_http_output_body_filter_pt      ngx_http_next_body_filter;
-ngx_module_t                        ngx_http_redirectionio_module;
+extern ngx_http_output_header_filter_pt    ngx_http_next_header_filter;
+extern ngx_http_output_body_filter_pt      ngx_http_next_body_filter;
+extern ngx_module_t                        ngx_http_redirectionio_module;
 
 ngx_int_t ngx_http_redirectionio_pool_construct(void **resource, void *params);
 ngx_int_t ngx_http_redirectionio_pool_destruct(void *resource, void *params);
