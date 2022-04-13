@@ -1,10 +1,11 @@
-## 2.3.0 - Unreleased
+## 2.3.0 - 13-04-2022
 
- * Allow configuring `redirectionio_trusted_proxies` for correct ip trigger matching
- * Support ip trigger (require 2.3 agent)
- * Support serving a txt file (require 2.3 agent)
- * Support disabling log redirection with a rule (require 2.3 agent)
- * Fix a bug when a rule was serving a 200 response without calling backend
+ * Added the `redirectionio_trusted_proxies` configuration directive for correct ip matching - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-trusted-proxies))
+ * Added support for the IP address trigger (requires the version 2.3 of the agent)
+ * Added support for the robots.txt action (requires the version 2.3 of the agent)
+ * Added the possibility to disable log for a specific request using a rule (requires the version 2.3 of the agent)
+ * Fixed an issue when a rule was serving a 200 response without the backend being called
+ * Better options for sockets management in the dialog with the agent
 
 ## 2.2.2 - 22-09-2021
 
