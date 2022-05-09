@@ -10,6 +10,7 @@ jobs:
         strategy:
             matrix:
                 distribution:
+                    - bullseye
                     - stretch
                     - buster
                     - xenial
