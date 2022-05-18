@@ -10,16 +10,13 @@ jobs:
         strategy:
             matrix:
                 distribution:
-                    - bullseye
                     - stretch
                     - buster
+                    - bullseye
                     - xenial
-                    - artful
                     - bionic
-                    - cosmic
-                    - disco
-                    - eoan
                     - focal
+                    - jammy
                     - centos_7
                     - centos_8
         steps:
