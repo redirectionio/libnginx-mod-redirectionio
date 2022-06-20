@@ -82,6 +82,7 @@ typedef struct {
     struct REDIRECTIONIO_Action                     *action;
     struct REDIRECTIONIO_HeaderMap                  *response_headers;
     struct REDIRECTIONIO_FilterBodyAction           *body_filter;
+    ngx_uint_t                                      backend_response_status_code;
 
     ngx_uint_t                                      connection_error;
     ngx_uint_t                                      wait_for_connection;

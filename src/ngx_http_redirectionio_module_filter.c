@@ -32,7 +32,8 @@ ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http
     }
 
     // Copy string
-    redirect_status_code = redirectionio_action_get_status_code(ctx->action, r->headers_out.status);
+    ctx->backend_response_status_code = r->headers_out.status;
+    redirect_status_code = redirectionio_action_get_status_code(ctx->action, ctx->backend_response_status_code);
 
     if (redirect_status_code == 0) {
         return ngx_http_redirectionio_headers_filter(r);
@@ -100,8 +101,8 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     // Copy specific headers
     ngx_http_redirectionio_header_content_type_read(r, &header_map);
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio filtering on response status code %d", r->headers_out.status);
-    header_map = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, header_map, r->headers_out.status, conf->show_rule_ids == NGX_HTTP_REDIRECTIONIO_ON);
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio filtering on response status code %d", ctx->backend_response_status_code);
+    header_map = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, header_map, ctx->backend_response_status_code, conf->show_rule_ids == NGX_HTTP_REDIRECTIONIO_ON);
 
     if (header_map == NULL) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio no filter to add");
@@ -197,7 +198,7 @@ static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r
     }
 
     // Create body filter
-    ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(ctx->action, r->headers_out.status);
+    ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(ctx->action, ctx->backend_response_status_code);
 
     if (ctx->body_filter != NULL) {
         // Remove content length header

@@ -232,6 +232,7 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->project_key.len = 0;
         ctx->scheme.len = 0;
         ctx->host.len = 0;
+        ctx->backend_response_status_code = 0;
 
         if (ngx_http_complex_value(r, conf->project_key, &ctx->project_key) != NGX_OK) {
             return NGX_DECLINED;
@@ -404,7 +405,7 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         return NGX_DECLINED;
     }
 
-    should_log = redirectionio_action_should_log_request(ctx->action, conf->enable_logs != NGX_HTTP_REDIRECTIONIO_OFF, r->headers_out.status);
+    should_log = redirectionio_action_should_log_request(ctx->action, conf->enable_logs != NGX_HTTP_REDIRECTIONIO_OFF, ctx->backend_response_status_code);
 
     if (!should_log) {
         return NGX_DECLINED;
