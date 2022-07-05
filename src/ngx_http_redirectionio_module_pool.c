@@ -48,12 +48,13 @@ ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
     }
 
     int tcp_nodelay = 1;
+    int keep_alive = 1;
 
     if (setsockopt(resource->peer.connection->fd, IPPROTO_TCP, TCP_NODELAY, (const void *) &tcp_nodelay, sizeof(int)) == -1) {
         ngx_log_error(NGX_LOG_ALERT, pool->log, ngx_socket_errno,  "setsockopt(TCP_NODELAY) %V failed, ignored", &resource->peer.connection->addr_text);
     }
 
-    if (setsockopt(resource->peer.connection->fd, IPPROTO_TCP, SO_KEEPALIVE, (const void *) &tcp_nodelay, sizeof(int)) == -1) {
+    if (setsockopt(resource->peer.connection->fd, IPPROTO_TCP, SO_KEEPALIVE, (const void *) &keep_alive, sizeof(int)) == -1) {
         ngx_log_error(NGX_LOG_ALERT, pool->log, ngx_socket_errno,  "setsockopt(SO_KEEPALIVE) %V failed, ignored", &resource->peer.connection->addr_text);
     }
 
