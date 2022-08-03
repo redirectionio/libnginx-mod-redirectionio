@@ -4,11 +4,11 @@
 
 ## 2.3.0 - 13-04-2022
 
- * Added the `redirectionio_trusted_proxies` configuration directive for correct ip matching - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-trusted-proxies))
- * Added support for the IP address trigger (requires the version 2.3 of the agent)
- * Added support for the robots.txt action (requires the version 2.3 of the agent)
- * Added the possibility to disable log for a specific request using a rule (requires the version 2.3 of the agent)
- * Fixed an issue when a rule was serving a 200 response without the backend being called
+ * Add the `redirectionio_trusted_proxies` configuration directive for correct ip matching - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-trusted-proxies))
+ * Add support for the IP address trigger (requires the version 2.3 of the agent)
+ * Add support for the robots.txt action (requires the version 2.3 of the agent)
+ * Add the possibility to disable log for a specific request using a rule (requires the version 2.3 of the agent)
+ * Fix an issue when a rule was serving a 200 response without the backend being called
  * Better options for sockets management in the dialog with the agent
 
 ## 2.2.2 - 22-09-2021
@@ -21,8 +21,8 @@
 
 ## 2.2.0 - 06-05-2021
 
- * added the `redirectionio_set_header` directive - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-set-header))
- * added connection pool management options to the `redirectionio_pass` directive: `min_conns`, `keep_conns`, `max_conns` and `timeout` - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-pass))
+ * Add the `redirectionio_set_header` directive - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-set-header))
+ * Add connection pool management options to the `redirectionio_pass` directive: `min_conns`, `keep_conns`, `max_conns` and `timeout` - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-pass))
 
 ## 2.1.1 - 16-04-2021
 
