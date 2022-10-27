@@ -198,7 +198,7 @@ static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r
     }
 
     // Create body filter
-    ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(ctx->action, ctx->backend_response_status_code);
+    ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(ctx->action, ctx->backend_response_status_code, ctx->response_headers);
 
     if (ctx->body_filter != NULL) {
         // Remove content length header
