@@ -8,6 +8,8 @@ static ngx_int_t ngx_http_redirectionio_header_read(ngx_http_request_t *r, ngx_t
 
 static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_request_t *r, struct REDIRECTIONIO_HeaderMap **first);
 
+static ngx_int_t ngx_http_redirectionio_header_content_type_write(ngx_http_request_t *r, ngx_table_elt_t *h);
+
 static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct REDIRECTIONIO_Buffer *output);
 
 ngx_int_t ngx_http_redirectionio_match_on_response_status_header_filter(ngx_http_request_t *r) {
@@ -145,13 +147,6 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
             continue;
         }
 
-        // Handle specific headers
-        if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Type") == 0) {
-            header_map = header_map->next;
-
-            continue;
-        }
-
         h = ngx_list_push(&r->headers_out.headers);
 
         if (h == NULL) {
@@ -174,6 +169,10 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
         if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Encoding") == 0) {
             r->headers_out.content_encoding = h;
+        }
+
+        if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Type") == 0) {
+            ngx_http_redirectionio_header_content_type_write(r, h);
         }
 
         header_map = header_map->next;
@@ -453,6 +452,54 @@ static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_reques
 
     *((char *)new_header->value + len) = '\0';
     *first = new_header;
+
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_redirectionio_header_content_type_write(ngx_http_request_t *r, ngx_table_elt_t *h) {
+    u_char  *p, *last;
+
+    r->headers_out.content_type_len = h->value.len;
+    r->headers_out.content_type = h->value;
+    r->headers_out.content_type_lowcase = NULL;
+
+    for (p = h->value.data; *p; p++) {
+
+        if (*p != ';') {
+            continue;
+        }
+
+        last = p;
+
+        while (*++p == ' ') { /* void */ }
+
+        if (*p == '\0') {
+            return NGX_OK;
+        }
+
+        if (ngx_strncasecmp(p, (u_char *) "charset=", 8) != 0) {
+            continue;
+        }
+
+        p += 8;
+
+        r->headers_out.content_type_len = last - h->value.data;
+
+        if (*p == '"') {
+            p++;
+        }
+
+        last = h->value.data + h->value.len;
+
+        if (*(last - 1) == '"') {
+            last--;
+        }
+
+        r->headers_out.charset.len = last - p;
+        r->headers_out.charset.data = p;
+
+        return NGX_OK;
+    }
 
     return NGX_OK;
 }
