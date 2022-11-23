@@ -1,3 +1,7 @@
+## 2.4.1 - 23-11-2022
+
+ * Allow libredirectionio to modify the `Content-Type` header
+
 ## 2.4.0 - 07-07-2022
 
  * Fix a bug when multiple rules where used with a backend status code trigger
