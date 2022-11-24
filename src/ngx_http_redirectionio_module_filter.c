@@ -8,7 +8,7 @@ static ngx_int_t ngx_http_redirectionio_header_read(ngx_http_request_t *r, ngx_t
 
 static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_request_t *r, struct REDIRECTIONIO_HeaderMap **first);
 
-static ngx_int_t ngx_http_redirectionio_header_content_type_write(ngx_http_request_t *r, ngx_table_elt_t *h);
+static ngx_int_t ngx_http_redirectionio_header_content_type_write(ngx_http_request_t *r, u_char *value);
 
 static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct REDIRECTIONIO_Buffer *output);
 
@@ -147,6 +147,14 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
             continue;
         }
 
+        // Some header should not be written into the headers list of the response, and in some special fields instead
+        if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Type") == 0) {
+            ngx_http_redirectionio_header_content_type_write(r, (u_char *)header_map->value);
+            header_map = header_map->next;
+
+            continue;
+        }
+
         h = ngx_list_push(&r->headers_out.headers);
 
         if (h == NULL) {
@@ -167,12 +175,13 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
         ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio add header to response \"%s: %s\"", header_map->name, header_map->value);
 
+        // Some headers need to be set in some special fields
         if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Encoding") == 0) {
             r->headers_out.content_encoding = h;
         }
 
-        if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Content-Type") == 0) {
-            ngx_http_redirectionio_header_content_type_write(r, h);
+        if (ngx_strcasecmp((u_char *)header_map->name, (u_char *)"Server") == 0) {
+            r->headers_out.server = h;
         }
 
         header_map = header_map->next;
@@ -456,15 +465,18 @@ static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_reques
     return NGX_OK;
 }
 
-static ngx_int_t ngx_http_redirectionio_header_content_type_write(ngx_http_request_t *r, ngx_table_elt_t *h) {
+static ngx_int_t ngx_http_redirectionio_header_content_type_write(ngx_http_request_t *r, u_char *value) {
     u_char  *p, *last;
+    size_t  value_len = strlen((const char *)value);
 
-    r->headers_out.content_type_len = h->value.len;
-    r->headers_out.content_type = h->value;
+    r->headers_out.content_type_len = value_len;
+    r->headers_out.content_type.len = value_len;
+    r->headers_out.content_type.data = ngx_pcalloc(r->pool, value_len);
+    ngx_memcpy(r->headers_out.content_type.data, value, value_len);
+
     r->headers_out.content_type_lowcase = NULL;
 
-    for (p = h->value.data; *p; p++) {
-
+    for (p = value; *p != '\0'; p++) {
         if (*p != ';') {
             continue;
         }
@@ -483,13 +495,13 @@ static ngx_int_t ngx_http_redirectionio_header_content_type_write(ngx_http_reque
 
         p += 8;
 
-        r->headers_out.content_type_len = last - h->value.data;
+        r->headers_out.content_type_len = last - value;
 
         if (*p == '"') {
             p++;
         }
 
-        last = h->value.data + h->value.len;
+        last = value + value_len;
 
         if (*(last - 1) == '"') {
             last--;
