@@ -1,8 +1,3 @@
-## 2.4.3 - 05-12-2022
-
- * Fix a memory leak on the log callback
- * Fix a potential memory leak on the body filtering system
-
 ## 2.4.2 - 23-11-2022
 
  * Allow libredirectionio to modify the `Content-Type` header
