@@ -7,7 +7,7 @@
 
  * Allow libredirectionio to modify the `Content-Type` header
 
-## 2.4.1 - 23-11-2022
+## 2.4.1 - 27-10-2022
 
  * Support gzip compression when filtering body, by updating libredirectionio deps
 
