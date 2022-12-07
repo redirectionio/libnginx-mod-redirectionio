@@ -337,7 +337,7 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
         status = ngx_http_redirectionio_write_match_action(ctx->resource->peer.connection->write);
 
         if (status == NGX_AGAIN) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] send again");
+            ngx_log_debug0(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] send again");
             ctx->resource->peer.connection->write->handler = ngx_http_redirectionio_write_match_action_handler;
 
             return NGX_AGAIN;
