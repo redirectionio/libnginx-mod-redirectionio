@@ -1,3 +1,7 @@
+## 2.5.0 - 20-03-2023
+
+* Support new compression format for body filtering: deflate and brotli
+
 ## 2.4.2 - 23-11-2022
 
  * Allow libredirectionio to modify the `Content-Type` header
