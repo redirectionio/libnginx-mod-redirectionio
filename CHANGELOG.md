@@ -1,3 +1,7 @@
+## 2.6.0 - 26-05-2023
+
+* Update libredirectionio to 2.8.0
+
 ## 2.5.0 - 20-03-2023
 
 * Support new compression format for body filtering: deflate and brotli
