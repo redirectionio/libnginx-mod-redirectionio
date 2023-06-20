@@ -13,12 +13,14 @@ jobs:
                     - stretch
                     - buster
                     - bullseye
+                    - bookworm
                     - xenial
                     - bionic
                     - focal
                     - jammy
                     - centos_7
                     - centos_8
+                    - centos_9
         steps:
             -
                 name: Set version
