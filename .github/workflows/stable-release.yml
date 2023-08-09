@@ -32,27 +32,6 @@ jobs:
                 run: MAJOR_VERSION=`sed -E 's/[^0-9]+?([0-9]+)\.([0-9]+)\.([0-9]+).+?/\1/' <<< $VERSION` && echo "MAJOR_VERSION=$MAJOR_VERSION" >> $GITHUB_ENV
 
             -
-                name: Trigger Circle CI API
-                env:
-                    CIRCLE_API_TOKEN: ${{ secrets.CIRCLE_API_TOKEN }}
-                    DISTRIBUTION: ${{ matrix.distribution }}
-                run: >
-                  curl --request POST
-                  --url https://circleci.com/api/v2/project/github/jolicode/redirection.io/pipeline
-                  --header "Circle-Token: $CIRCLE_API_TOKEN"
-                  --header "Content-Type: application/json"
-                  --data "
-                    {
-                      \"branch\":\"master\",
-                      \"parameters\": {
-                        \"run_main\":false,
-                        \"run_php_sdk\": false,
-                        \"run_lint\": false,
-                        \"release_env\": \"production\",
-                        \"release_channel\": \"stable\",
-                        \"release_main_version_dir\": \"$MAJOR_VERSION\",
-                        \"release_nginx_module_version\": \"$VERSION\",
-                        \"release_distribution\": \"$DISTRIBUTION\"
-                      }
-                    }
-                  "
+                name: Trigger workflow
+                run: |
+                    gh workflow run release.yml -R jolicode/redirection.io -f environment=production -f package=module-nginx -f channel=stable -f version=$VERSION -f version_directory=$MAJOR_VERSION -f build_iteration=1 -f module_image=$DISTRIBUTION
