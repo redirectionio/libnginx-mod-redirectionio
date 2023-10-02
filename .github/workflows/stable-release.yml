@@ -36,4 +36,4 @@ jobs:
                 env:
                     GH_TOKEN: ${{ secrets.TRIGGER_WORKFLOW_TOKEN }}
                 run: |
-                    gh workflow run release.yml -R jolicode/redirection.io -f environment=production -f package=module-nginx -f channel=stable -f version=$VERSION -f version_directory=$MAJOR_VERSION -f build_iteration=1 -f module_image=$DISTRIBUTION
+                    gh workflow run release.yml -R jolicode/redirection.io -f environment=production -f package=module-nginx -f channel=stable -f version=$VERSION -f version_directory=$MAJOR_VERSION -f build_iteration=1 -f module_image=${{ matrix.distribution }}"
