@@ -182,10 +182,11 @@ ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http
 
 ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
     const char                      *client_ip, *log_serialized;
+    uint64_t                        time = ((uint64_t)r->start_sec * 1000) + (uint64_t)r->start_msec;
     ngx_http_redirectionio_log_t    *log;
 
     client_ip = ngx_http_redirectionio_str_to_char(&r->connection->addr_text, r->pool);
-    log_serialized = redirectionio_api_create_log_in_json(ctx->request, r->headers_out.status, ctx->response_headers, ctx->action, PROXY_VERSION_STR(PROXY_VERSION), r->start_msec, client_ip);
+    log_serialized = redirectionio_api_create_log_in_json(ctx->request, r->headers_out.status, ctx->response_headers, ctx->action, PROXY_VERSION_STR(PROXY_VERSION), time, client_ip);
 
     if (log_serialized == NULL) {
         return NULL;
