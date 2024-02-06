@@ -1,3 +1,13 @@
+## 2.8.0 - 06-02-2024
+
+* Update libredirectionio to 2.10.0
+* Fix request time in log
+* Add backend duration to log
+
+## 2.7.0 - 03-10-2023
+
+* Update libredirectionio to 2.9.0
+
 ## 2.6.0 - 26-05-2023
 
 * Update libredirectionio to 2.8.0
