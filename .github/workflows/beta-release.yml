@@ -13,8 +13,6 @@ jobs:
                     - buster
                     - bullseye
                     - bookworm
-                    - xenial
-                    - bionic
                     - focal
                     - jammy
                     - noble
