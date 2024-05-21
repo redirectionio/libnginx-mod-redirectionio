@@ -14,8 +14,10 @@ jobs:
                     - bullseye
                     - bookworm
                     - xenial
+                    - bionic
                     - focal
                     - jammy
+                    - noble
                     - centos_7
                     - centos_8
         steps:
