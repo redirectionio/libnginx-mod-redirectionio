@@ -260,6 +260,12 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
 
         // Buffered case
         if (tmp_chain == NULL) {
+            if (ctx->body_filter == NULL) {
+                // Case where the body filter has been closed  and we receive NULL, which means we have to send the last buffer as last
+                last_chain->buf->last_buf = 1;
+                break;
+            }
+
             // Update sent chain
             previous_chain = current_chain;
             tsize += ngx_buf_size(current_chain->buf);
@@ -363,7 +369,7 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
                 return out;
             }
 
-            return cl;
+            return NULL;
         }
 
         mbsize = buf_out.len;
