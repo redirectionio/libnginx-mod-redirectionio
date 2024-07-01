@@ -262,7 +262,10 @@ ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t 
         if (tmp_chain == NULL) {
             if (ctx->body_filter == NULL) {
                 // Case where the body filter has been closed  and we receive NULL, which means we have to send the last buffer as last
-                last_chain->buf->last_buf = 1;
+                if (last_chain != NULL) {
+                    last_chain->buf->last_buf = 1;
+                }
+
                 break;
             }
 
