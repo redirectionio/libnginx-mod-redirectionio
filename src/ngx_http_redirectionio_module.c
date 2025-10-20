@@ -223,6 +223,8 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ctx->response_headers = NULL;
         ctx->body_filter = NULL;
         ctx->action_string = NULL;
+        ctx->action_match_time = 0;
+        ctx->proxy_response_time = 0;
         ctx->action_string_len = 0;
         ctx->action_string_readed = 0;
         ctx->connection_error = 0;
@@ -716,6 +718,7 @@ static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, c
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_http_request_t              *r;
     ngx_connection_t                *c;
+    ngx_time_t                      *tp;
 
     c = rev->data;
     r = c->data;
@@ -732,6 +735,9 @@ static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, c
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio action received: %s", action_serialized);
 
     ctx->action = (struct REDIRECTIONIO_Action *)redirectionio_action_json_deserialize((char *)action_serialized);
+
+    tp = ngx_timeofday();
+    ctx->action_match_time = (tp->sec * 1000 + tp->msec);
 
     ngx_http_core_run_phases(r);
 }

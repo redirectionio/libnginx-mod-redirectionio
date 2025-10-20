@@ -186,7 +186,7 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
     ngx_http_redirectionio_log_t    *log;
 
     client_ip = ngx_http_redirectionio_str_to_char(&r->connection->addr_text, r->pool);
-    log_serialized = redirectionio_api_create_log_in_json(ctx->request, r->headers_out.status, ctx->response_headers, ctx->action, PROXY_VERSION_STR(PROXY_VERSION), time, client_ip);
+    log_serialized = redirectionio_api_create_log_in_json(ctx->request, r->headers_out.status, ctx->response_headers, ctx->action, PROXY_VERSION_STR(PROXY_VERSION), time, ctx->action_match_time, ctx->proxy_response_time, client_ip);
 
     if (log_serialized == NULL) {
         return NULL;

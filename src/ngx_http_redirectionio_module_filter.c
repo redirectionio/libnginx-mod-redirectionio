@@ -194,6 +194,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
 static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r) {
     ngx_http_redirectionio_ctx_t    *ctx;
+    ngx_time_t                      *tp;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
@@ -212,6 +213,10 @@ static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r
         // Remove content length header
         r->headers_out.content_length_n = -1;
     }
+
+    // Save proxy response time
+    tp = ngx_timeofday();
+    ctx->proxy_response_time = (tp->sec * 1000 + tp->msec);
 
     return ngx_http_next_header_filter(r);
 }
