@@ -2,7 +2,7 @@ name: Release stable release
 
 on:
     release:
-        types: [released]
+        types: [ released ]
 
 jobs:
     trigger-circleci:
@@ -10,26 +10,23 @@ jobs:
         strategy:
             matrix:
                 distribution:
-                    - buster
-                    - bullseye
                     - bookworm
+                    - bullseye
+                    - centos_9
                     - focal
                     - jammy
                     - noble
-                    - centos_9
+                    - trixie
         steps:
-            -
-                name: Set version
+            -   name: Set version
                 env:
                     REF: ${{ github.ref }}
                 run: VERSION=`sed -E 's/[^0-9]+?([0-9]+\.[0-9]+\.[0-9]+.+?)/\1/' <<< $REF` && echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-            -
-                name: Set major version
+            -   name: Set major version
                 run: MAJOR_VERSION=`sed -E 's/[^0-9]+?([0-9]+)\.([0-9]+)\.([0-9]+).+?/\1/' <<< $VERSION` && echo "MAJOR_VERSION=$MAJOR_VERSION" >> $GITHUB_ENV
 
-            -
-                name: Trigger workflow
+            -   name: Trigger workflow
                 env:
                     GH_TOKEN: ${{ secrets.TRIGGER_WORKFLOW_TOKEN }}
                 run: |
