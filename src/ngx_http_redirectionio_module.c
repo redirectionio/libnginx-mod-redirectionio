@@ -18,6 +18,7 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_redirectionio_set_trusted_proxies(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_redirectionio_trace_enable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 
@@ -28,9 +29,9 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_redirectionio_write_match_action(ngx_event_t *wev);
 static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev);
 static void ngx_http_redirectionio_read_match_action_handler(ngx_event_t *rev, const char *action_serialized);
-static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data, short level);
 
 static void ngx_http_redirectionio_context_cleanup(void *context);
+static void ngx_http_redirectionio_trusted_proxies_cleanup(void *trusted_proxies);
 
 /**
  * Commands definitions
@@ -106,6 +107,14 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         ngx_http_redirectionio_set_trusted_proxies,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, headers_set),
+        NULL
+    },
+    {
+        ngx_string("redirectionio_trace_enable"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_DIRECT_CONF|NGX_CONF_NOARGS,
+        ngx_http_redirectionio_trace_enable,
+        0,
+        0,
         NULL
     },
     ngx_null_command /* command termination */
@@ -260,8 +269,6 @@ static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r
         ngx_http_set_ctx(r, ctx, ngx_http_redirectionio_module);
 
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio init context");
-
-        redirectionio_log_init_with_callback(ngx_http_redirectionio_log_callback, r->connection->log);
     }
 
     return NGX_DECLINED;
@@ -677,11 +684,26 @@ static char *ngx_http_redirectionio_set_trusted_proxies(ngx_conf_t *cf, ngx_comm
     ngx_http_redirectionio_conf_t           *conf = c;
     char                                    *trusted_proxies_str;
     ngx_str_t                               *value;
+    ngx_pool_cleanup_t                      *cln;
 
     value = cf->args->elts;
     trusted_proxies_str = ngx_http_redirectionio_str_to_char(&value[1], cf->pool);
 
     conf->trusted_proxies = (struct REDIRECTIONIO_TrustedProxies *) redirectionio_trusted_proxies_create((const char *)trusted_proxies_str);
+    cln = ngx_pool_cleanup_add(cf->pool, 0);
+
+    if (cln == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    cln->data = conf->trusted_proxies;
+    cln->handler = ngx_http_redirectionio_trusted_proxies_cleanup;
+
+    return NGX_CONF_OK;
+}
+
+static char *ngx_http_redirectionio_trace_enable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    redirectionio_trace_init();
 
     return NGX_CONF_OK;
 }
@@ -746,14 +768,6 @@ void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, const char *jso
     return;
 }
 
-static void ngx_http_redirectionio_log_callback(const char* log_str, const void* data, short level) {
-    if (level <= 1) {
-        ngx_log_error(NGX_LOG_ERR, (ngx_log_t *)data, 0, "redirectionio api error: %s", log_str);
-    }
-
-    free((char *)log_str);
-}
-
 static void ngx_http_redirectionio_context_cleanup(void *context) {
     struct REDIRECTIONIO_HeaderMap  *first_header, *tmp_header;
     ngx_http_redirectionio_ctx_t    *ctx = (ngx_http_redirectionio_ctx_t *)context;
@@ -788,6 +802,10 @@ static void ngx_http_redirectionio_context_cleanup(void *context) {
         redirectionio_action_body_filter_drop(ctx->body_filter);
         ctx->body_filter = NULL;
     }
+}
+
+static void ngx_http_redirectionio_trusted_proxies_cleanup(void *trusted_proxies) {
+    redirectionio_trusted_proxies_drop((struct REDIRECTIONIO_TrustedProxies *)trusted_proxies);
 }
 
 char* ngx_http_redirectionio_str_to_char(ngx_str_t *src, ngx_pool_t *pool) {
