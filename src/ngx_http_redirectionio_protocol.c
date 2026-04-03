@@ -116,10 +116,13 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     rv = ngx_http_redirectionio_send_protocol_header(c, project_key, REDIRECTIONIO_PROTOCOL_COMMAND_MATCH_ACTION);
 
     if (rv == NGX_AGAIN) {
+        free((void *)request_serialized);
+
         return rv;
     }
 
     if (rv != NGX_OK) {
+        free((void *)request_serialized);
         ctx->connection_error = 1;
 
         return NGX_ERROR;
@@ -129,6 +132,7 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     rv = ngx_http_redirectionio_send_uint32(c, strlen(request_serialized));
 
     if (rv != NGX_OK) {
+        free((void *)request_serialized);
         ctx->connection_error = 1;
 
         return NGX_ERROR;
@@ -194,11 +198,13 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
 
     log = malloc(sizeof(ngx_http_redirectionio_log_t));
 
-    ngx_memzero(log, sizeof(ngx_http_redirectionio_log_t));
-
     if (log == NULL) {
+        free((char *)log_serialized);
+
         return NULL;
     }
+
+    ngx_memzero(log, sizeof(ngx_http_redirectionio_log_t));
 
     ngx_str_copy(project_key, &log->project_key);
     log->log_serialized = log_serialized;
@@ -239,7 +245,7 @@ static ngx_int_t ngx_http_redirectionio_send_uint16(ngx_connection_t *c, uint16_
     uint16 = htons(uint16);
 
     while (sdrlen < serlen) {
-        srlen = ngx_send(c, (u_char *)&uint16, srlen);
+        srlen = ngx_send(c, (u_char *)&uint16 + sdrlen, srlen);
 
         if (srlen <= 0) {
             return srlen;
@@ -260,7 +266,7 @@ static ngx_int_t ngx_http_redirectionio_send_uint32(ngx_connection_t *c, uint32_
     uint32 = htonl(uint32);
 
     while (sdrlen < serlen) {
-        srlen = ngx_send(c, (u_char *)&uint32, srlen);
+        srlen = ngx_send(c, (u_char *)&uint32 + sdrlen, srlen);
 
         if (srlen <= 0) {
             return srlen;

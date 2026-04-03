@@ -25,6 +25,8 @@ ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
     resource = ngx_pcalloc(pool, sizeof(ngx_http_redirectionio_resource_t));
 
     if (resource == NULL) {
+        ngx_destroy_pool(pool);
+
         return NGX_ERROR;
     }
 
@@ -43,6 +45,8 @@ ngx_int_t ngx_http_redirectionio_pool_construct(void **rp, void *params) {
         if (resource->peer.connection) {
             ngx_close_connection(resource->peer.connection);
         }
+
+        ngx_destroy_pool(pool);
 
         return NGX_ERROR;
     }
@@ -276,7 +280,7 @@ static ngx_int_t ngx_http_redirectionio_read_uint32(ngx_connection_t *c, uint32_
     ssize_t     sdrlen = 0;
 
     while (sdrlen < serlen) {
-        srlen = ngx_recv(c, (u_char *)(uint32 + sdrlen), srlen);
+        srlen = ngx_recv(c, ((u_char *)uint32) + sdrlen, srlen);
 
         if (srlen <= 0) {
             return srlen;

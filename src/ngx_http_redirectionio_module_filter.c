@@ -469,11 +469,11 @@ static ngx_int_t ngx_http_redirectionio_header_content_type_read(ngx_http_reques
     ngx_memcpy((char *)new_header->value, r->headers_out.content_type.data, r->headers_out.content_type.len);
 
     if (r->headers_out.content_type_len == r->headers_out.content_type.len && r->headers_out.charset.len) {
-        ngx_memcpy((char *)new_header->value, "; charset=", sizeof("; charset=") - 1);
-        ngx_memcpy((char *)new_header->value, r->headers_out.charset.data, r->headers_out.charset.len);
+        ngx_memcpy((char *)new_header->value + r->headers_out.content_type.len, "; charset=", sizeof("; charset=") - 1);
+        ngx_memcpy((char *)new_header->value + r->headers_out.content_type.len + sizeof("; charset=") - 1, r->headers_out.charset.data, r->headers_out.charset.len);
     }
 
-    *((char *)new_header->value + len) = '\0';
+    *((char *)new_header->value + len - 1) = '\0';
     *first = new_header;
 
     return NGX_OK;

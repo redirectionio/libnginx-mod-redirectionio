@@ -33,10 +33,6 @@ http {
         redirectionio_project_key 58056a48-664d-11e7-aeb0-0242ac130004;
         redirectionio_add_rule_ids_header on;
         redirectionio_pass agent:10301 min_conns=10 keep_conns=10 max_conns=1000 timeout=100;
-        redirectionio_set_header X-Host-Ter $host;
-        redirectionio_set_header X-Host-Ter-2 $host;
-        redirectionio_set_header X-Host-Ter-3 YOLOLOLO;
-        redirectionio_trusted_proxies "127.0.0.1,172.18.0.0/24";
 
         location /noredirection {
             redirectionio off;
@@ -50,6 +46,12 @@ http {
             redirectionio_host myhost.com;
             redirectionio_scheme https;
         }
+
+        location / {
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_pass http://backend:8080;
+        }
     }
 
     server {
@@ -60,15 +62,11 @@ http {
         redirectionio on;
         redirectionio_project_key 58056a48-664d-11e7-aeb0-0242ac130004;
         redirectionio_pass agent:10301;
-        redirectionio_set_header X-Host-Bis $host;
-        redirectionio_set_header X-Host-Bis-2 $host;
-        redirectionio_set_header X-Host-Bis-3 YOLOLOLO;
-        redirectionio_trusted_proxies "127.0.0.1,172.18.0.0/24";
 
         location / {
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_pass http://backend;
+            proxy_pass http://backend:8080;
         }
     }
 }

@@ -445,7 +445,7 @@ static void *ngx_http_redirectionio_create_conf(ngx_conf_t *cf) {
     conf->enable_logs = NGX_CONF_UNSET_UINT;
     conf->show_rule_ids = NGX_CONF_UNSET_UINT;
     conf->server.min_conns = RIO_MIN_CONNECTIONS;
-    conf->server.max_conns = RIO_MAX_CONNECTIONS;
+    conf->server.keep_conns = RIO_KEEP_CONNECTIONS;
     conf->server.max_conns = RIO_MAX_CONNECTIONS;
     conf->server.timeout = RIO_DEFAULT_TIMEOUT;
 

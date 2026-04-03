@@ -51,11 +51,12 @@ ngx_int_t ngx_reslist_create(ngx_reslist_t **rreslist, ngx_pool_t *pool, ngx_int
 
 ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available callback, void *data) {
     ngx_reslist_callback_queue_t *cq = ngx_memalign(NGX_POOL_ALIGNMENT, sizeof(ngx_reslist_callback_queue_t), ngx_cycle->log);
-    ngx_memzero(cq, sizeof(ngx_reslist_callback_queue_t));
 
     if (cq == NULL) {
         return NGX_ERROR;
     }
+
+    ngx_memzero(cq, sizeof(ngx_reslist_callback_queue_t));
 
     cq->callback = callback;
     cq->data = data;
@@ -249,14 +250,12 @@ static ngx_int_t ngx_reslist_call_acquire_resource(ngx_reslist_t *reslist, ngx_r
         if (create_resource(reslist, &res) == NGX_OK) {
             reslist->ntotal++;
         }
-
-        free_container(reslist, res);
     } else {
         res = pop_resource(reslist);
-        free_container(reslist, res);
     }
 
     cq->resource = res->resource;
+    free_container(reslist, res);
 
     if (!deferred) {
         rv = (cq->callback)(reslist, cq->resource, cq->data, 0);
