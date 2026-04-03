@@ -1,3 +1,14 @@
+## 3.1.0 - 04-04-2026
+
+* Update libredirectionio to 3.1.0
+* Fix potential memory leak when when the agent is no longer available
+* Fix segfault when redirectionio_pass was declared on http block level
+* Add directive to enable redirectionio tracing, remove log callback
+
+## 3.0.0 - 26-02-2026
+
+* Update libredirectionio to 3.0.0
+
 ## 2.9.0 - 28-05-2024
 
 * Update libredirectionio to 2.11.2
@@ -55,7 +66,8 @@
 * Add the `redirectionio_set_header`
   directive - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-set-header))
 * Add connection pool management options to the `redirectionio_pass` directive: `min_conns`, `keep_conns`, `max_conns`
-  and `timeout` - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-pass))
+  and
+  `timeout` - ([see the documentation](https://redirection.io/documentation/developer-documentation/nginx-module#redirectionio-pass))
 
 ## 2.1.1 - 16-04-2021
 
