@@ -4,6 +4,7 @@
 * Fix potential memory leak when when the agent is no longer available
 * Fix segfault when redirectionio_pass was declared on http block level
 * Add directive to enable redirectionio tracing, remove log callback
+* Fix issue when filtering body with last buffer incorrectly sent
 
 ## 3.0.0 - 26-02-2026
 
