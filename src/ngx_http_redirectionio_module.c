@@ -493,8 +493,27 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
     if (conf->server.pass.url.data == NULL) {
         if (prev->server.pass.url.data) {
             conf->server.pass = prev->server.pass;
-            // Reuse prev conn pool (limit)
             conf->connection_pool = prev->connection_pool;
+
+            // this can happens if url set in http block, as it will never be merged with parent and so connection pool will not be created,
+            // so we need to create it here, we don't create it for parent, let's use a connection pool per server block
+            if (conf->connection_pool == NULL) {
+                if(ngx_reslist_create(
+                    &conf->connection_pool,
+                    cf->pool,
+                    conf->server.min_conns,
+                    conf->server.keep_conns,
+                    conf->server.max_conns,
+                    conf->server.timeout,
+                    conf,
+                    ngx_http_redirectionio_pool_construct,
+                    ngx_http_redirectionio_pool_destruct
+                ) != NGX_OK) {
+                    ngx_log_error(NGX_LOG_ERR, cf->log, 0, "[redirectionio] cannot create connection pool for redirectionio, disabling module");
+
+                    conf->enable = NGX_HTTP_REDIRECTIONIO_OFF;
+                }
+            }
         } else {
             // Should create new connection pool
             conf->server.pass.url = (ngx_str_t)ngx_string("127.0.0.1:10301");
