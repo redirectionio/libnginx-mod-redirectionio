@@ -377,7 +377,7 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
                 return out;
             }
 
-            return NULL;
+            return cl;
         }
 
         mbsize = buf_out.len;
