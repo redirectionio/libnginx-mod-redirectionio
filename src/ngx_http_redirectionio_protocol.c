@@ -96,6 +96,12 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     }
 
     // Create redirection io request
+    // Free old request if set (can happen on NGX_AGAIN retry)
+    if (ctx->request != NULL) {
+        redirectionio_request_drop(ctx->request);
+        ctx->request = NULL;
+    }
+
     ctx->request = (struct REDIRECTIONIO_Request *)redirectionio_request_create(uri, host, scheme, method, first_header);
 
     if (ctx->request == NULL) {

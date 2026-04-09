@@ -112,6 +112,22 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
         return ngx_http_redirectionio_create_filter_body(r);
     }
 
+    // Free old response_headers if set (can happen on internal redirects where the filter runs again)
+    if (ctx->response_headers != NULL) {
+        struct REDIRECTIONIO_HeaderMap *old_header = ctx->response_headers;
+        struct REDIRECTIONIO_HeaderMap *tmp_header;
+
+        while (old_header != NULL) {
+            tmp_header = old_header->next;
+
+            free((void *)old_header->name);
+            free((void *)old_header->value);
+            free((void *)old_header);
+
+            old_header = tmp_header;
+        }
+    }
+
     ctx->response_headers = header_map;
 
     // Deactivate all old headers
@@ -207,6 +223,12 @@ static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r
     }
 
     // Create body filter
+    // Free old body_filter if set (can happen on internal redirects where the filter runs again)
+    if (ctx->body_filter != NULL) {
+        redirectionio_action_body_filter_drop(ctx->body_filter);
+        ctx->body_filter = NULL;
+    }
+
     ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(ctx->action, ctx->backend_response_status_code, ctx->response_headers);
 
     if (ctx->body_filter != NULL) {
