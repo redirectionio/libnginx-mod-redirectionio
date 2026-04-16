@@ -13,7 +13,6 @@ jobs:
                     - bookworm
                     - bullseye
                     - centos_9
-                    - focal
                     - jammy
                     - noble
                     - trixie
