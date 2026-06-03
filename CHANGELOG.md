@@ -1,3 +1,9 @@
+## 3.1.1 - 03-06-2026
+
+* Decouple memory drop / alloc when using libredirectionio to avoid separate allocator issue
+* Fix potential memory leak on rare error paths
+* Remove focal build
+
 ## 3.1.0 - 04-04-2026
 
 * Update libredirectionio to 3.1.0
