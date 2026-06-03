@@ -788,7 +788,6 @@ void ngx_http_redirectionio_read_dummy_handler(ngx_event_t *rev, const char *jso
 }
 
 static void ngx_http_redirectionio_context_cleanup(void *context) {
-    struct REDIRECTIONIO_HeaderMap  *first_header, *tmp_header;
     ngx_http_redirectionio_ctx_t    *ctx = (ngx_http_redirectionio_ctx_t *)context;
 
     if (ctx->action != NULL) {
@@ -802,18 +801,7 @@ static void ngx_http_redirectionio_context_cleanup(void *context) {
     }
 
     if (ctx->response_headers != NULL) {
-        first_header = (struct REDIRECTIONIO_HeaderMap *)ctx->response_headers;
-
-        while (first_header != NULL) {
-            tmp_header = first_header->next;
-
-            free((void *)first_header->name);
-            free((void *)first_header->value);
-            free((void *)first_header);
-
-            first_header = tmp_header;
-        }
-
+        redirectionio_header_map_drop(ctx->response_headers);
         ctx->response_headers = NULL;
     }
 

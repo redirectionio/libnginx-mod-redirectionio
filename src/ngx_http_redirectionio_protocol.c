@@ -122,13 +122,13 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     rv = ngx_http_redirectionio_send_protocol_header(c, project_key, REDIRECTIONIO_PROTOCOL_COMMAND_MATCH_ACTION);
 
     if (rv == NGX_AGAIN) {
-        free((void *)request_serialized);
+        redirectionio_string_drop(request_serialized);
 
         return rv;
     }
 
     if (rv != NGX_OK) {
-        free((void *)request_serialized);
+        redirectionio_string_drop(request_serialized);
         ctx->connection_error = 1;
 
         return NGX_ERROR;
@@ -138,7 +138,7 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     rv = ngx_http_redirectionio_send_uint32(c, strlen(request_serialized));
 
     if (rv != NGX_OK) {
-        free((void *)request_serialized);
+        redirectionio_string_drop(request_serialized);
         ctx->connection_error = 1;
 
         return NGX_ERROR;
@@ -147,7 +147,7 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     // Send serialized request
     rv = ngx_http_redirectionio_send_string(c, request_serialized, strlen(request_serialized));
 
-    free((void *)request_serialized);
+    redirectionio_string_drop(request_serialized);
 
     if (rv != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, c->log, 0, "[redirectionio] error sending request: %d", rv);
@@ -205,7 +205,7 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
     log = malloc(sizeof(ngx_http_redirectionio_log_t));
 
     if (log == NULL) {
-        free((char *)log_serialized);
+        redirectionio_string_drop(log_serialized);
 
         return NULL;
     }
@@ -220,7 +220,7 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
 
 void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log) {
     free(log->project_key.data);
-    free((char *)log->log_serialized);
+    redirectionio_string_drop(log->log_serialized);
 
     free(log);
 }

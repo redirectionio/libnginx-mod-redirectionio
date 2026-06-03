@@ -114,18 +114,7 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     // Free old response_headers if set (can happen on internal redirects where the filter runs again)
     if (ctx->response_headers != NULL) {
-        struct REDIRECTIONIO_HeaderMap *old_header = ctx->response_headers;
-        struct REDIRECTIONIO_HeaderMap *tmp_header;
-
-        while (old_header != NULL) {
-            tmp_header = old_header->next;
-
-            free((void *)old_header->name);
-            free((void *)old_header->value);
-            free((void *)old_header);
-
-            old_header = tmp_header;
-        }
+        redirectionio_header_map_drop(ctx->response_headers);
     }
 
     ctx->response_headers = header_map;
@@ -560,6 +549,7 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct RE
 #endif
     size_t  bsize, readed = 0;
     ssize_t n;
+    u_char  *tmp;
 
     bsize = ngx_buf_size(buffer);
 
@@ -570,34 +560,48 @@ static ngx_int_t ngx_http_redirectionio_buffer_read(ngx_buf_t *buffer, struct RE
         return NGX_OK;
     }
 
-    if (!ngx_buf_in_memory(buffer) && !buffer->in_file) {
+    // In memory case: hand a copy directly to the library
+    if (ngx_buf_in_memory(buffer)) {
+        *output = redirectionio_api_buffer_create(buffer->pos, bsize);
+
+        return NGX_OK;
+    }
+
+    if (!buffer->in_file) {
         return NGX_DONE;
     }
 
-    output->data = malloc(bsize);
-    output->len = bsize;
+    // In file case: read into a temporary buffer, then hand a copy to the library
+    tmp = malloc(bsize);
 
-    if (ngx_buf_in_memory(buffer)) {
-        ngx_memcpy(output->data, buffer->pos, bsize);
-    } else if (buffer->in_file) {
-#if (NGX_HAVE_SENDFILE64)
-        offset = buffer->file_pos;
-#else
-        offset = (int32_t) buffer->file_pos;
-#endif
-        while (readed < bsize) {
-            n = pread(buffer->file->fd, output->data, bsize - readed, offset + readed);
+    if (tmp == NULL) {
+        output->data = NULL;
+        output->len = 0;
 
-            if (n <= 0) {
-                free(output->data);
-                output->len = 0;
-
-                return NGX_ERROR;
-            }
-
-            readed += n;
-        }
+        return NGX_ERROR;
     }
+
+#if (NGX_HAVE_SENDFILE64)
+    offset = buffer->file_pos;
+#else
+    offset = (int32_t) buffer->file_pos;
+#endif
+    while (readed < bsize) {
+        n = pread(buffer->file->fd, tmp + readed, bsize - readed, offset + readed);
+
+        if (n <= 0) {
+            free(tmp);
+            output->data = NULL;
+            output->len = 0;
+
+            return NGX_ERROR;
+        }
+
+        readed += n;
+    }
+
+    *output = redirectionio_api_buffer_create(tmp, bsize);
+    free(tmp);
 
     return NGX_OK;
 }
