@@ -346,8 +346,11 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
 
     buf_out = redirectionio_action_body_filter_filter(ctx->body_filter, buf_in);
 
-    // Same output as input
+    // Same output as input (filter errored and handed the chunk back untouched):
+    // drop our per-chunk copy (which aliases buf_in) and keep the original chain
     if (buf_out.len > 0 && buf_out.data == buf_in.data) {
+        redirectionio_api_buffer_drop(buf_out);
+
         return cl;
     }
 
