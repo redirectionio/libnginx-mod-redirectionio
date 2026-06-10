@@ -708,12 +708,15 @@ static char *ngx_http_redirectionio_set_trusted_proxies(ngx_conf_t *cf, ngx_comm
     value = cf->args->elts;
     trusted_proxies_str = ngx_http_redirectionio_str_to_char(&value[1], cf->pool);
 
-    conf->trusted_proxies = (struct REDIRECTIONIO_TrustedProxies *) redirectionio_trusted_proxies_create((const char *)trusted_proxies_str);
+    // Register the cleanup before creating the rust object, so it cannot leak
+    // if adding the cleanup fails
     cln = ngx_pool_cleanup_add(cf->pool, 0);
 
     if (cln == NULL) {
         return NGX_CONF_ERROR;
     }
+
+    conf->trusted_proxies = (struct REDIRECTIONIO_TrustedProxies *) redirectionio_trusted_proxies_create((const char *)trusted_proxies_str);
 
     cln->data = conf->trusted_proxies;
     cln->handler = ngx_http_redirectionio_trusted_proxies_cleanup;

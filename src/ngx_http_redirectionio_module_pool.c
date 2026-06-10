@@ -239,6 +239,21 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev) {
         }
 
         ctx->action_string = (char *)ngx_pcalloc(r->pool, ctx->action_string_len + 1);
+
+        if (ctx->action_string == NULL) {
+            ctx->connection_error = 1;
+            ctx->resource->peer.connection->read->handler = ngx_http_redirectionio_dummy_handler;
+
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot allocate buffer for action, skipping module for this request");
+
+            if (rev->timer_set) {
+                ngx_del_timer(rev);
+            }
+
+            ctx->read_handler(rev, NULL);
+
+            return;
+        }
     }
 
     rv = ngx_http_redirectionio_read_string(c, ctx->action_string, ctx->action_string_len, &ctx->action_string_readed);
@@ -282,7 +297,14 @@ static ngx_int_t ngx_http_redirectionio_read_uint32(ngx_connection_t *c, uint32_
     while (sdrlen < serlen) {
         srlen = ngx_recv(c, ((u_char *)uint32) + sdrlen, srlen);
 
-        if (srlen <= 0) {
+        // 0 means the connection was closed by the peer: it must be an error,
+        // not NGX_OK (which is also 0), otherwise the caller would use a
+        // garbage length
+        if (srlen == 0) {
+            return NGX_ERROR;
+        }
+
+        if (srlen < 0) {
             return srlen;
         }
 
@@ -300,6 +322,12 @@ static ngx_int_t ngx_http_redirectionio_read_string(ngx_connection_t *c, char *s
 
     while (*readed < buf_size) {
         srlen = ngx_recv(c, (u_char *)(string + *readed), buf_size - *readed);
+
+        // 0 means the connection was closed by the peer, stop instead of
+        // spinning forever on an empty read
+        if (srlen == 0) {
+            return NGX_ERROR;
+        }
 
         if (srlen < 0) {
             return srlen;

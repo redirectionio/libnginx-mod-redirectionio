@@ -53,7 +53,9 @@ ngx_int_t ngx_reslist_acquire(ngx_reslist_t *reslist, ngx_reslist_available call
     ngx_reslist_callback_queue_t *cq = ngx_memalign(NGX_POOL_ALIGNMENT, sizeof(ngx_reslist_callback_queue_t), ngx_cycle->log);
 
     if (cq == NULL) {
-        return NGX_ERROR;
+        // Still notify the callback (with no resource), as it owns the data
+        // passed here and may have to free it
+        return callback(reslist, NULL, data, 0);
     }
 
     ngx_memzero(cq, sizeof(ngx_reslist_callback_queue_t));
@@ -147,6 +149,10 @@ static ngx_reslist_res_t *get_container(ngx_reslist_t *reslist) {
 }
 
 static void free_container(ngx_reslist_t *reslist, ngx_reslist_res_t *container) {
+    // Clear the resource pointer so a recycled container never hands a stale
+    // (already destroyed) resource to a callback when the constructor fails
+    container->resource = NULL;
+
     ngx_queue_insert_tail(&reslist->res_free_list, &container->queue_free);
 }
 
@@ -167,14 +173,28 @@ static ngx_int_t destroy_resource(ngx_reslist_t *reslist, ngx_reslist_res_t *res
 }
 
 static void reslist_cleanup(void *data) {
-    ngx_reslist_t *rl   = data;
-    ngx_reslist_res_t   *res;
+    ngx_reslist_t                   *rl = data;
+    ngx_reslist_res_t               *res;
+    ngx_reslist_callback_queue_t    *cq;
 
     while (rl->nidle > 0) {
         res = pop_resource(rl);
         rl->ntotal--;
         destroy_resource(rl, res);
         free_container(rl, res);
+    }
+
+    // Free pending waiters: their timers must not fire after the reslist is
+    // gone and their queue entries are heap allocated
+    while (!ngx_queue_empty(&rl->callback_avail_list)) {
+        cq = ngx_queue_data(ngx_queue_head(&rl->callback_avail_list), ngx_reslist_callback_queue_t, queue);
+        ngx_queue_remove(&cq->queue);
+
+        if (cq->event.timer_set) {
+            ngx_del_timer(&cq->event);
+        }
+
+        ngx_free(cq);
     }
 }
 

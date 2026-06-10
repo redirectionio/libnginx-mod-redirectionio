@@ -359,6 +359,8 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
         out = ngx_palloc(r->pool, sizeof(ngx_chain_t));
 
         if (out == NULL) {
+            redirectionio_api_buffer_drop(buf_out);
+
             return cl;
         }
 
@@ -398,6 +400,8 @@ static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirect
         el = ngx_palloc(r->pool, sizeof(ngx_chain_t));
 
         if (el == NULL) {
+            redirectionio_api_buffer_drop(buf_out);
+
             if (out != NULL) {
                 out->buf->last_buf = 1;
 
