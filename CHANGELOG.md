@@ -1,3 +1,8 @@
+## 3.1.2 - 10-06-2026
+
+* Fix poisoned connection not being cleared and ending up bloating the pool
+* Fix memory leaks in error scenario where some resources were not correctly cleaned
+
 ## 3.1.1 - 03-06-2026
 
 * Decouple memory drop / alloc when using libredirectionio to avoid separate allocator issue
