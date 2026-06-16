@@ -2,7 +2,7 @@
 
 static ngx_chain_t* ngx_http_redirectionio_body_filter_replace(ngx_http_redirectionio_ctx_t *ctx, ngx_http_request_t *r, ngx_chain_t *cl);
 
-static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r);
+static void ngx_http_redirectionio_init_body_filter(ngx_http_request_t *r, struct REDIRECTIONIO_HeaderMap *headers_for_body_filter);
 
 static ngx_int_t ngx_http_redirectionio_header_read(ngx_http_request_t *r, ngx_table_elt_t *header, struct REDIRECTIONIO_HeaderMap **first);
 
@@ -103,13 +103,16 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
     // Copy specific headers
     ngx_http_redirectionio_header_content_type_read(r, &header_map);
 
+    // Initialize body filter from backend headers before redirection.io mutates them.
+    ngx_http_redirectionio_init_body_filter(r, header_map);
+
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio filtering on response status code %d", ctx->backend_response_status_code);
     header_map = (struct REDIRECTIONIO_HeaderMap *)redirectionio_action_header_filter_filter(ctx->action, header_map, ctx->backend_response_status_code, conf->show_rule_ids == NGX_HTTP_REDIRECTIONIO_ON);
 
     if (header_map == NULL) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio no filter to add");
 
-        return ngx_http_redirectionio_create_filter_body(r);
+        return ngx_http_next_header_filter(r);
     }
 
     // Free old response_headers if set (can happen on internal redirects where the filter runs again)
@@ -194,21 +197,21 @@ ngx_int_t ngx_http_redirectionio_headers_filter(ngx_http_request_t *r) {
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio header filter done");
 
-    return ngx_http_redirectionio_create_filter_body(r);
+    return ngx_http_next_header_filter(r);
 }
 
-static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r) {
+static void ngx_http_redirectionio_init_body_filter(ngx_http_request_t *r, struct REDIRECTIONIO_HeaderMap *headers_for_body_filter) {
     ngx_http_redirectionio_ctx_t    *ctx;
     ngx_time_t                      *tp;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_redirectionio_module);
 
     if (ctx == NULL) {
-        return ngx_http_next_header_filter(r);
+        return;
     }
 
     if (ctx->action == NULL) {
-        return ngx_http_next_header_filter(r);
+        return;
     }
 
     // Create body filter
@@ -218,7 +221,11 @@ static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r
         ctx->body_filter = NULL;
     }
 
-    ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(ctx->action, ctx->backend_response_status_code, ctx->response_headers);
+    ctx->body_filter = (struct REDIRECTIONIO_FilterBodyAction *)redirectionio_action_body_filter_create(
+        ctx->action,
+        ctx->backend_response_status_code,
+        headers_for_body_filter
+    );
 
     if (ctx->body_filter != NULL) {
         // Remove content length header
@@ -228,8 +235,6 @@ static ngx_int_t ngx_http_redirectionio_create_filter_body(ngx_http_request_t *r
     // Save proxy response time
     tp = ngx_timeofday();
     ctx->proxy_response_time = (tp->sec * 1000 + tp->msec);
-
-    return ngx_http_next_header_filter(r);
 }
 
 ngx_int_t ngx_http_redirectionio_body_filter(ngx_http_request_t *r, ngx_chain_t *input_chain) {
