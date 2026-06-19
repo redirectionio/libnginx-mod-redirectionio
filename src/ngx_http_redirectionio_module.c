@@ -414,13 +414,22 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
         return NGX_DECLINED;
     }
 
-    should_log = redirectionio_action_should_log_request(ctx->action, conf->enable_logs != NGX_HTTP_REDIRECTIONIO_OFF, ctx->backend_response_status_code);
-
-    if (!should_log) {
+    // When logging is disabled at the module level (yaml configuration), the request is
+    // not logged and its rules are not counted: the user opted this proxy out of traffic
+    // visibility.
+    if (conf->enable_logs == NGX_HTTP_REDIRECTIONIO_OFF) {
         return NGX_DECLINED;
     }
 
-    log = ngx_http_redirectionio_protocol_create_log(r, ctx, &ctx->project_key);
+    should_log = redirectionio_action_should_log_request(ctx->action, true, ctx->backend_response_status_code);
+
+    if (should_log) {
+        log = ngx_http_redirectionio_protocol_create_log(r, ctx, &ctx->project_key);
+    } else {
+        // Logging was disabled for this request by a "configuration" action: still count
+        // the executed rules, without sending the full request log.
+        log = ngx_http_redirectionio_protocol_create_rule_count(ctx, &ctx->project_key);
+    }
 
     if (log == NULL) {
         return NGX_DECLINED;

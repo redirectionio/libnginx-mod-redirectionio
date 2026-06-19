@@ -27,6 +27,7 @@
 
 #define REDIRECTIONIO_PROTOCOL_COMMAND_MATCH_ACTION 0
 #define REDIRECTIONIO_PROTOCOL_COMMAND_LOG 1
+#define REDIRECTIONIO_PROTOCOL_COMMAND_RULE_COUNT 2
 
 #define NGX_HTTP_REDIRECTIONIO_RESOURCE_MAX_USAGE   500
 
@@ -99,6 +100,7 @@ typedef struct {
 typedef struct {
     ngx_str_t                           project_key;
     const char                          *log_serialized;
+    uint16_t                            command;
     ngx_http_redirectionio_resource_t   *resource;
     ngx_reslist_t                       *reslist;
 } ngx_http_redirectionio_log_t;
@@ -125,6 +127,7 @@ void ngx_http_redirectionio_read_handler(ngx_event_t *rev);
 ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key);
 ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log);
 ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key);
+ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_rule_count(ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key);
 void ngx_http_redirectionio_protocol_free_log(ngx_http_redirectionio_log_t *log);
 void ngx_http_redirectionio_protocol_send_filter_header(ngx_connection_t *c, ngx_http_request_t *r, ngx_str_t *project_key, ngx_str_t *rule_id);
 ngx_uint_t ngx_http_redirectionio_protocol_send_filter_body(ngx_connection_t *c, ngx_chain_t *in, ngx_str_t *project_key, ngx_str_t *rule_id, ngx_uint_t is_first);

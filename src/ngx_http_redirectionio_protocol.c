@@ -164,7 +164,7 @@ ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http
     ngx_int_t   rv;
 
     // Send protocol header
-    rv = ngx_http_redirectionio_send_protocol_header(c, &log->project_key, REDIRECTIONIO_PROTOCOL_COMMAND_LOG);
+    rv = ngx_http_redirectionio_send_protocol_header(c, &log->project_key, log->command);
 
     if (rv == NGX_AGAIN) {
         return rv;
@@ -214,6 +214,37 @@ ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_log(ngx_htt
 
     ngx_str_copy(project_key, &log->project_key);
     log->log_serialized = log_serialized;
+    log->command = REDIRECTIONIO_PROTOCOL_COMMAND_LOG;
+
+    return log;
+}
+
+/* Create a rule-count message for a request that was executed but not logged (its
+ * logging was disabled by a "configuration" action): only the applied rule ids are
+ * sent, to count their executions. */
+ngx_http_redirectionio_log_t* ngx_http_redirectionio_protocol_create_rule_count(ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
+    const char                      *rule_ids_serialized;
+    ngx_http_redirectionio_log_t    *log;
+
+    rule_ids_serialized = redirectionio_action_get_applied_rule_ids(ctx->action);
+
+    if (rule_ids_serialized == NULL) {
+        return NULL;
+    }
+
+    log = malloc(sizeof(ngx_http_redirectionio_log_t));
+
+    if (log == NULL) {
+        redirectionio_string_drop(rule_ids_serialized);
+
+        return NULL;
+    }
+
+    ngx_memzero(log, sizeof(ngx_http_redirectionio_log_t));
+
+    ngx_str_copy(project_key, &log->project_key);
+    log->log_serialized = rule_ids_serialized;
+    log->command = REDIRECTIONIO_PROTOCOL_COMMAND_RULE_COUNT;
 
     return log;
 }
