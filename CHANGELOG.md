@@ -1,3 +1,8 @@
+## 3.2.0 - 26-06-2026
+
+* Update libredirectionio to 3.2.0
+* Fix capture backend response headers to pass them to body filters before redirection.io mutates them
+
 ## 3.1.2 - 10-06-2026
 
 * Fix poisoned connection not being cleared and ending up bloating the pool
