@@ -425,10 +425,16 @@ static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
 
     if (should_log) {
         log = ngx_http_redirectionio_protocol_create_log(r, ctx, &ctx->project_key);
-    } else {
+    } else if (redirectionio_action_agent_supports_rule_count(ctx->action)) {
         // Logging was disabled for this request by a "configuration" action: still count
-        // the executed rules, without sending the full request log.
+        // the executed rules, without sending the full request log. Only when the agent
+        // understands the RULE_COUNT command (protocol >= 1.1), as advertised in the match
+        // response; sending it to an older agent would make it reject the unknown command
+        // and close the pooled connection, corrupting later requests.
         log = ngx_http_redirectionio_protocol_create_rule_count(ctx, &ctx->project_key);
+    } else {
+        // Older agent without rule-count support: nothing to send for this request.
+        log = NULL;
     }
 
     if (log == NULL) {
