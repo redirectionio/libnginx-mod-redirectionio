@@ -1,3 +1,9 @@
+## 3.3.0 - 05-08-2026
+
+* Update libredirectionio to 3.3.0
+* Report rule executions to the agent with the `RULE_COUNT` command, so rules triggered on
+  non-logged requests are still counted - only sent when the agent advertises protocol >= 1.1
+
 ## 3.2.0 - 26-06-2026
 
 * Update libredirectionio to 3.2.0
