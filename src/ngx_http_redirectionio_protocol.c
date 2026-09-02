@@ -19,7 +19,7 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     struct REDIRECTIONIO_HeaderMap      *first_header = NULL, *current_header = NULL;
     const char                          *request_serialized;
     char                                *method, *uri, *host = NULL, *scheme = NULL, *client_ip;
-    ngx_uint_t                          i;
+    ngx_uint_t                          i, allow_scheme_override = 0, allow_host_override = 0;
     ngx_http_redirectionio_conf_t       *conf;
     ngx_http_redirectionio_header_set_t *hs;
     ngx_str_t                           hsn, hsv;
@@ -74,25 +74,33 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
         first_header = current_header;
     }
 
+    // an explicit redirectionio_scheme wins, TLS detection included, otherwise it could not force
+    // a scheme on a TLS enabled virtual host
     if (ctx->scheme.len > 0) {
         scheme = ngx_http_redirectionio_str_to_char(&ctx->scheme, r->pool);
     } else {
         scheme = "http";
-    }
+        allow_scheme_override = 1;
 
 #if (NGX_HTTP_SSL)
-    if (r->connection->ssl) {
-        scheme = "https";
-    }
+        if (r->connection->ssl) {
+            scheme = "https";
+        }
 #endif
+    }
 
     uri = ngx_http_redirectionio_str_to_char(&r->unparsed_uri, r->pool);
     method = ngx_http_redirectionio_str_to_char(&r->method_name, r->pool);
 
+    // same for redirectionio_host
     if (ctx->host.len > 0) {
         host = ngx_http_redirectionio_str_to_char(&ctx->host, r->pool);
-    } else if (r->headers_in.host != NULL) {
-        host = ngx_http_redirectionio_str_to_char(&r->headers_in.host->value, r->pool);
+    } else {
+        allow_host_override = 1;
+
+        if (r->headers_in.host != NULL) {
+            host = ngx_http_redirectionio_str_to_char(&r->headers_in.host->value, r->pool);
+        }
     }
 
     // Create redirection io request
@@ -109,7 +117,8 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     }
 
     client_ip = ngx_http_redirectionio_str_to_char(&r->connection->addr_text, r->pool);
-    redirectionio_request_set_remote_addr(ctx->request, (const char *)client_ip, conf->trusted_proxies);
+    // let a trusted proxy's Forwarded header correct what we could only guess
+    redirectionio_request_set_forwarded(ctx->request, (const char *)client_ip, conf->trusted_proxies, (uint8_t)allow_scheme_override, (uint8_t)allow_host_override);
 
     // Serialize request
     request_serialized = redirectionio_request_json_serialize(ctx->request);
