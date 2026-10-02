@@ -25,6 +25,11 @@ static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
 static ngx_int_t ngx_http_redirectionio_create_ctx_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_redirectionio_filter_request_headers(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx);
+static void ngx_http_redirectionio_request_headers_filtered(void *data);
+#if (nginx_version < 1023000)
+static ngx_uint_t ngx_http_redirectionio_is_multi_header(ngx_str_t *name);
+#endif
 
 static ngx_int_t ngx_http_redirectionio_write_match_action(ngx_event_t *wev);
 static void ngx_http_redirectionio_write_match_action_handler(ngx_event_t *wev);
@@ -380,6 +385,10 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http redirectionio status code before backend call %d", redirect_status_code);
 
     if (redirect_status_code == 0) {
+        if (ngx_http_redirectionio_filter_request_headers(r, ctx) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[redirectionio] cannot filter request headers");
+        }
+
         return NGX_DECLINED;
     }
 
@@ -390,6 +399,195 @@ static ngx_int_t ngx_http_redirectionio_redirect_handler(ngx_http_request_t *r) 
 
     return NGX_DONE;
 }
+
+/**
+ * Replace the request headers forwarded to the backend with the ones filtered by the action.
+ *
+ * ngx_list_t cannot remove an element, so the list is rebuilt, and the shortcuts of
+ * ngx_http_headers_in_t are pointed to the new elements.
+ */
+static ngx_int_t ngx_http_redirectionio_filter_request_headers(ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx) {
+    ngx_http_core_main_conf_t               *cmcf;
+    ngx_http_header_t                       *hh;
+    ngx_pool_cleanup_t                      *cln;
+    ngx_list_t                              headers;
+    ngx_list_part_t                         *part;
+    ngx_table_elt_t                         *h, **ph;
+    ngx_uint_t                              i, count = 0;
+    struct REDIRECTIONIO_HeaderMap          *reversed_headers, *first_header = NULL, *current_header, *next_header;
+    const struct REDIRECTIONIO_HeaderMap    *filtered_headers, *filtered_header;
+#if (nginx_version < 1023000)
+    ngx_array_t                             *multi_headers;
+#endif
+
+    // An internal redirect clears the module context and matches again, but the headers must
+    // only be filtered once: remember it with a cleanup, which survives the redirect
+    for (cln = r->pool->cleanup; cln != NULL; cln = cln->next) {
+        if (cln->handler == ngx_http_redirectionio_request_headers_filtered) {
+            return NGX_OK;
+        }
+    }
+
+    reversed_headers = ngx_http_redirectionio_protocol_capture_request_headers(r, 0);
+
+    for (current_header = reversed_headers; current_header != NULL; current_header = next_header) {
+        next_header = current_header->next;
+        current_header->next = first_header;
+        first_header = current_header;
+    }
+
+    filtered_headers = redirectionio_action_request_header_filter_filter(ctx->action, first_header);
+
+    // No request header filter for this action: leave the request untouched
+    if (filtered_headers == NULL) {
+        return NGX_OK;
+    }
+
+    for (filtered_header = filtered_headers; filtered_header != NULL; filtered_header = filtered_header->next) {
+        count++;
+    }
+
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+
+    if (cln == NULL || ngx_list_init(&headers, r->pool, count > 0 ? count : 1, sizeof(ngx_table_elt_t)) != NGX_OK) {
+        redirectionio_header_map_drop(filtered_headers);
+
+        return NGX_ERROR;
+    }
+
+    cln->handler = ngx_http_redirectionio_request_headers_filtered;
+    cln->data = NULL;
+
+    for (filtered_header = filtered_headers; filtered_header != NULL; filtered_header = filtered_header->next) {
+        if (filtered_header->name == NULL || filtered_header->value == NULL || filtered_header->name[0] == '\0') {
+            continue;
+        }
+
+        h = ngx_list_push(&headers);
+
+        if (h == NULL) {
+            redirectionio_header_map_drop(filtered_headers);
+
+            return NGX_ERROR;
+        }
+
+        // Keep the strings null terminated, as the request parser does
+        h->key.len = ngx_strlen(filtered_header->name);
+        h->key.data = ngx_pnalloc(r->pool, h->key.len + 1);
+        h->value.len = ngx_strlen(filtered_header->value);
+        h->value.data = ngx_pnalloc(r->pool, h->value.len + 1);
+        h->lowcase_key = ngx_pnalloc(r->pool, h->key.len);
+
+        if (h->key.data == NULL || h->value.data == NULL || h->lowcase_key == NULL) {
+            redirectionio_header_map_drop(filtered_headers);
+
+            return NGX_ERROR;
+        }
+
+        ngx_memcpy(h->key.data, filtered_header->name, h->key.len + 1);
+        ngx_memcpy(h->value.data, filtered_header->value, h->value.len + 1);
+        h->hash = ngx_hash_strlow(h->lowcase_key, h->key.data, h->key.len);
+#if (nginx_version >= 1023000)
+        h->next = NULL;
+#endif
+    }
+
+    redirectionio_header_map_drop(filtered_headers);
+
+    r->headers_in.headers = headers;
+
+    // Same as ngx_http_process_request_headers, without its handlers: protected headers (host,
+    // content length, connection...) are never changed by the filter, so what they computed holds
+    for (hh = ngx_http_headers_in; hh->name.len > 0; hh++) {
+#if (nginx_version < 1023000)
+        if (ngx_http_redirectionio_is_multi_header(&hh->name)) {
+            ((ngx_array_t *) ((char *) &r->headers_in + hh->offset))->nelts = 0;
+
+            continue;
+        }
+#endif
+
+        *((ngx_table_elt_t **) ((char *) &r->headers_in + hh->offset)) = NULL;
+    }
+
+    cmcf = ngx_http_get_module_main_conf(r, ngx_http_core_module);
+    part = &r->headers_in.headers.part;
+    h = part->elts;
+
+    for (i = 0; /* void */ ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            h = part->elts;
+            i = 0;
+        }
+
+        hh = ngx_hash_find(&cmcf->headers_in_hash, h[i].hash, h[i].lowcase_key, h[i].key.len);
+
+        if (hh == NULL) {
+            continue;
+        }
+
+#if (nginx_version < 1023000)
+        if (ngx_http_redirectionio_is_multi_header(&hh->name)) {
+            multi_headers = (ngx_array_t *) ((char *) &r->headers_in + hh->offset);
+
+            if (multi_headers->elts == NULL && ngx_array_init(multi_headers, r->pool, 1, sizeof(ngx_table_elt_t *)) != NGX_OK) {
+                return NGX_ERROR;
+            }
+
+            ph = ngx_array_push(multi_headers);
+
+            if (ph == NULL) {
+                return NGX_ERROR;
+            }
+
+            *ph = &h[i];
+
+            continue;
+        }
+
+        ph = (ngx_table_elt_t **) ((char *) &r->headers_in + hh->offset);
+
+        if (*ph == NULL) {
+            *ph = &h[i];
+        }
+#else
+        ph = (ngx_table_elt_t **) ((char *) &r->headers_in + hh->offset);
+
+        while (*ph != NULL) {
+            ph = &(*ph)->next;
+        }
+
+        *ph = &h[i];
+#endif
+    }
+
+    return NGX_OK;
+}
+
+static void ngx_http_redirectionio_request_headers_filtered(void *data) {
+}
+
+#if (nginx_version < 1023000)
+// Before 1.23, these headers are collected in an array instead of a linked list
+static ngx_uint_t ngx_http_redirectionio_is_multi_header(ngx_str_t *name) {
+    if (name->len == sizeof("Cookie") - 1 && ngx_strncasecmp(name->data, (u_char *) "Cookie", name->len) == 0) {
+        return 1;
+    }
+
+#if (NGX_HTTP_X_FORWARDED_FOR)
+    if (name->len == sizeof("X-Forwarded-For") - 1 && ngx_strncasecmp(name->data, (u_char *) "X-Forwarded-For", name->len) == 0) {
+        return 1;
+    }
+#endif
+
+    return 0;
+}
+#endif
 
 static ngx_int_t ngx_http_redirectionio_log_handler(ngx_http_request_t *r) {
     ngx_http_redirectionio_conf_t   *conf;

@@ -3,6 +3,7 @@
 * Take the scheme and the host from a trusted proxy's `Forwarded` header (RFC 7239) when they could only be guessed. `X-Forwarded-Proto` and `X-Forwarded-Host` stay untrusted, use `redirectionio_scheme` / `redirectionio_host` to build the value from them
 * Fix `redirectionio_scheme` being overwritten by the TLS detection
 * Without `redirectionio_trusted_proxies`, the loopback and the private networks are trusted by default, so this applies there too
+* Apply the request header filters of the matched rules to the request forwarded to the backend (add, replace, override, remove or default a header)
 
 ## 3.3.0 - 05-08-2026
 

@@ -14,8 +14,6 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
 
 ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
     ngx_int_t                           rv;
-    ngx_table_elt_t                     *h;
-    ngx_list_part_t                     *part;
     struct REDIRECTIONIO_HeaderMap      *first_header = NULL, *current_header = NULL;
     const char                          *request_serialized;
     char                                *method, *uri, *host = NULL, *scheme = NULL, *client_ip;
@@ -28,31 +26,7 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
 
     // Create header map
     // First add request headers
-    part = &r->headers_in.headers.part;
-    h = part->elts;
-
-    for (i = 0; /* void */ ; i++) {
-        if (i >= part->nelts) {
-            if (part->next == NULL) {
-                break;
-            }
-
-            part = part->next;
-            h = part->elts;
-            i = 0;
-        }
-
-        if (h[i].value.len <= 0 || h[i].key.len <= 0) {
-            continue;
-        }
-
-        current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
-        current_header->name = ngx_http_redirectionio_str_to_char(&h[i].key, r->pool);
-        current_header->value = ngx_http_redirectionio_str_to_char(&h[i].value, r->pool);
-        current_header->next = first_header;
-
-        first_header = current_header;
-    }
+    first_header = ngx_http_redirectionio_protocol_capture_request_headers(r, 1);
 
     // Then set headers
     hs = conf->headers_set.elts;
@@ -166,6 +140,42 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     }
 
     return NGX_OK;
+}
+
+/* The returned header map is in the reverse order of the request headers. */
+struct REDIRECTIONIO_HeaderMap *ngx_http_redirectionio_protocol_capture_request_headers(ngx_http_request_t *r, ngx_uint_t skip_empty_values) {
+    ngx_table_elt_t                     *h;
+    ngx_list_part_t                     *part;
+    struct REDIRECTIONIO_HeaderMap      *first_header = NULL, *current_header = NULL;
+    ngx_uint_t                          i;
+
+    part = &r->headers_in.headers.part;
+    h = part->elts;
+
+    for (i = 0; /* void */ ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            h = part->elts;
+            i = 0;
+        }
+
+        if (h[i].key.len <= 0 || (skip_empty_values && h[i].value.len <= 0)) {
+            continue;
+        }
+
+        current_header = (struct REDIRECTIONIO_HeaderMap *)ngx_pcalloc(r->pool, sizeof(struct REDIRECTIONIO_HeaderMap));
+        current_header->name = ngx_http_redirectionio_str_to_char(&h[i].key, r->pool);
+        current_header->value = ngx_http_redirectionio_str_to_char(&h[i].value, r->pool);
+        current_header->next = first_header;
+
+        first_header = current_header;
+    }
+
+    return first_header;
 }
 
 ngx_int_t ngx_http_redirectionio_protocol_send_log(ngx_connection_t *c, ngx_http_redirectionio_log_t *log) {
