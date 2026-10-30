@@ -1,3 +1,7 @@
+## Unreleased
+
+* Add the `redirectionio_tls_fingerprint`, `redirectionio_tcp_fingerprint` and `redirectionio_http2_fingerprint` directives, sending with the logs the fingerprints of the client connection that another module or a proxy in front of nginx computed, e.g. `redirectionio_tls_fingerprint $http_x_ja4;`
+
 ## 3.4.0 - 05-10-2026
 
 * Update libredirectionio to 3.4.0: support the "tag logs" rule action and the `response_header` variable, drop a default port (80 or 443) from the request host

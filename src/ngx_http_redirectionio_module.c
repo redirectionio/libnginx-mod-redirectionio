@@ -99,6 +99,30 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
         NULL
     },
     {
+        ngx_string("redirectionio_tls_fingerprint"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        ngx_http_set_complex_value_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, tls_fingerprint),
+        NULL
+    },
+    {
+        ngx_string("redirectionio_tcp_fingerprint"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        ngx_http_set_complex_value_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, tcp_fingerprint),
+        NULL
+    },
+    {
+        ngx_string("redirectionio_http2_fingerprint"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+        ngx_http_set_complex_value_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_redirectionio_conf_t, http2_fingerprint),
+        NULL
+    },
+    {
         ngx_string("redirectionio_set_header"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE2,
         ngx_http_redirectionio_set_header,
@@ -688,6 +712,18 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 
     if (conf->host == NULL) {
         conf->host = prev->host;
+    }
+
+    if (conf->tls_fingerprint == NULL) {
+        conf->tls_fingerprint = prev->tls_fingerprint;
+    }
+
+    if (conf->tcp_fingerprint == NULL) {
+        conf->tcp_fingerprint = prev->tcp_fingerprint;
+    }
+
+    if (conf->http2_fingerprint == NULL) {
+        conf->http2_fingerprint = prev->http2_fingerprint;
     }
 
     if (conf->trusted_proxies == NULL) {

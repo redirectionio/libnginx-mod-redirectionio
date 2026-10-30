@@ -58,6 +58,9 @@ typedef struct {
     ngx_http_complex_value_t            *project_key;
     ngx_http_complex_value_t            *scheme;
     ngx_http_complex_value_t            *host;
+    ngx_http_complex_value_t            *tls_fingerprint;
+    ngx_http_complex_value_t            *tcp_fingerprint;
+    ngx_http_complex_value_t            *http2_fingerprint;
     ngx_uint_t                          show_rule_ids;
     ngx_http_redirectionio_server_t     server;
     ngx_array_t                         headers_set;

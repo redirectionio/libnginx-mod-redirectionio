@@ -12,6 +12,8 @@ static ngx_int_t ngx_http_redirectionio_send_string(ngx_connection_t *c, const c
 
 static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c, ngx_str_t *project_key, uint16_t command);
 
+static void ngx_http_redirectionio_set_fingerprint(ngx_http_request_t *r, struct REDIRECTIONIO_Request *request, const char *name, ngx_http_complex_value_t *fingerprint);
+
 ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
     ngx_int_t                           rv;
     struct REDIRECTIONIO_HeaderMap      *first_header = NULL, *current_header = NULL;
@@ -93,6 +95,10 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     client_ip = ngx_http_redirectionio_str_to_char(&r->connection->addr_text, r->pool);
     // let a trusted proxy's Forwarded header correct what we could only guess
     redirectionio_request_set_forwarded(ctx->request, (const char *)client_ip, conf->trusted_proxies, (uint8_t)allow_scheme_override, (uint8_t)allow_host_override);
+
+    ngx_http_redirectionio_set_fingerprint(r, ctx->request, "tls", conf->tls_fingerprint);
+    ngx_http_redirectionio_set_fingerprint(r, ctx->request, "tcp", conf->tcp_fingerprint);
+    ngx_http_redirectionio_set_fingerprint(r, ctx->request, "http2", conf->http2_fingerprint);
 
     // Serialize request
     request_serialized = redirectionio_request_json_serialize(ctx->request);
@@ -410,4 +416,14 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     }
 
     return NGX_OK;
+}
+
+static void ngx_http_redirectionio_set_fingerprint(ngx_http_request_t *r, struct REDIRECTIONIO_Request *request, const char *name, ngx_http_complex_value_t *fingerprint) {
+    ngx_str_t   value;
+
+    if (fingerprint == NULL || ngx_http_complex_value(r, fingerprint, &value) != NGX_OK || value.len == 0) {
+        return;
+    }
+
+    redirectionio_request_set_fingerprint(request, name, ngx_http_redirectionio_str_to_char(&value, r->pool));
 }
