@@ -1,6 +1,6 @@
 ## Unreleased
 
-* Add the `redirectionio_tls_fingerprint`, `redirectionio_tcp_fingerprint` and `redirectionio_http2_fingerprint` directives, sending with the logs the fingerprints of the client connection that another module or a proxy in front of nginx computed, e.g. `redirectionio_tls_fingerprint $http_x_ja4;`
+* Add the `redirectionio_tls_fingerprint`, `redirectionio_tcp_fingerprint` and `redirectionio_http2_fingerprint` directives, sending with the logs the fingerprints of the client connection that a proxy in front of nginx or another module computed, e.g. `redirectionio_tls_fingerprint $http_x_ja4;`. The value is only taken when the connection comes from one of the `redirectionio_trusted_proxies` (before the realip module, if any): add `always` to take it from any connection, for a variable that a client cannot set, e.g. `redirectionio_tls_fingerprint $http_ssl_ja4 always;`
 
 ## 3.4.0 - 05-10-2026
 

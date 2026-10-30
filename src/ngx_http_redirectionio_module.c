@@ -18,6 +18,7 @@ static char *ngx_http_redirectionio_merge_conf(ngx_conf_t *cf, void *parent, voi
 static char *ngx_http_redirectionio_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_redirectionio_set_trusted_proxies(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_redirectionio_set_fingerprint(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_redirectionio_trace_enable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_redirectionio_postconfiguration(ngx_conf_t *cf);
@@ -100,24 +101,24 @@ static ngx_command_t ngx_http_redirectionio_commands[] = {
     },
     {
         ngx_string("redirectionio_tls_fingerprint"),
-        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
-        ngx_http_set_complex_value_slot,
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE12,
+        ngx_http_redirectionio_set_fingerprint,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, tls_fingerprint),
         NULL
     },
     {
         ngx_string("redirectionio_tcp_fingerprint"),
-        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
-        ngx_http_set_complex_value_slot,
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE12,
+        ngx_http_redirectionio_set_fingerprint,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, tcp_fingerprint),
         NULL
     },
     {
         ngx_string("redirectionio_http2_fingerprint"),
-        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
-        ngx_http_set_complex_value_slot,
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE12,
+        ngx_http_redirectionio_set_fingerprint,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_redirectionio_conf_t, http2_fingerprint),
         NULL
@@ -944,6 +945,59 @@ static char *ngx_http_redirectionio_set_header(ngx_conf_t *cf, ngx_command_t *cm
 
         return NGX_CONF_ERROR;
     }
+
+    return NGX_CONF_OK;
+}
+
+static char *ngx_http_redirectionio_set_fingerprint(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    char                                    *p = conf;
+    ngx_http_redirectionio_fingerprint_t    **field, *fingerprint;
+    ngx_http_compile_complex_value_t        ccv;
+    ngx_str_t                               *value;
+
+    field = (ngx_http_redirectionio_fingerprint_t **) (p + cmd->offset);
+
+    if (*field != NULL) {
+        return "is duplicate";
+    }
+
+    fingerprint = ngx_pcalloc(cf->pool, sizeof(ngx_http_redirectionio_fingerprint_t));
+
+    if (fingerprint == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    fingerprint->value = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+
+    if (fingerprint->value == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    value = cf->args->elts;
+
+    if (cf->args->nelts == 3) {
+        if (ngx_strcmp(value[2].data, "always") != 0) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\", expected \"always\"", &value[2]);
+
+            return NGX_CONF_ERROR;
+        }
+
+        fingerprint->always = 1;
+    }
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+    ccv.cf = cf;
+    ccv.value = &value[1];
+    ccv.complex_value = fingerprint->value;
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"", &value[1]);
+
+        return NGX_CONF_ERROR;
+    }
+
+    *field = fingerprint;
 
     return NGX_CONF_OK;
 }

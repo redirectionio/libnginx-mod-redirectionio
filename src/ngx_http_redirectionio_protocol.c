@@ -12,7 +12,9 @@ static ngx_int_t ngx_http_redirectionio_send_string(ngx_connection_t *c, const c
 
 static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c, ngx_str_t *project_key, uint16_t command);
 
-static void ngx_http_redirectionio_set_fingerprint(ngx_http_request_t *r, struct REDIRECTIONIO_Request *request, const char *name, ngx_http_complex_value_t *fingerprint);
+static void ngx_http_redirectionio_set_fingerprint(ngx_http_request_t *r, ngx_http_redirectionio_conf_t *conf, struct REDIRECTIONIO_Request *request, const char *client_ip, const char *name, ngx_http_redirectionio_fingerprint_t *fingerprint);
+
+static const char *ngx_http_redirectionio_peer_ip(ngx_http_request_t *r, const char *client_ip);
 
 ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_http_request_t *r, ngx_http_redirectionio_ctx_t *ctx, ngx_str_t *project_key) {
     ngx_int_t                           rv;
@@ -96,9 +98,9 @@ ngx_int_t ngx_http_redirectionio_protocol_send_match(ngx_connection_t *c, ngx_ht
     // let a trusted proxy's Forwarded header correct what we could only guess
     redirectionio_request_set_forwarded(ctx->request, (const char *)client_ip, conf->trusted_proxies, (uint8_t)allow_scheme_override, (uint8_t)allow_host_override);
 
-    ngx_http_redirectionio_set_fingerprint(r, ctx->request, "tls", conf->tls_fingerprint);
-    ngx_http_redirectionio_set_fingerprint(r, ctx->request, "tcp", conf->tcp_fingerprint);
-    ngx_http_redirectionio_set_fingerprint(r, ctx->request, "http2", conf->http2_fingerprint);
+    ngx_http_redirectionio_set_fingerprint(r, conf, ctx->request, client_ip, "tls", conf->tls_fingerprint);
+    ngx_http_redirectionio_set_fingerprint(r, conf, ctx->request, client_ip, "tcp", conf->tcp_fingerprint);
+    ngx_http_redirectionio_set_fingerprint(r, conf, ctx->request, client_ip, "http2", conf->http2_fingerprint);
 
     // Serialize request
     request_serialized = redirectionio_request_json_serialize(ctx->request);
@@ -418,12 +420,39 @@ static ngx_int_t ngx_http_redirectionio_send_protocol_header(ngx_connection_t *c
     return NGX_OK;
 }
 
-static void ngx_http_redirectionio_set_fingerprint(ngx_http_request_t *r, struct REDIRECTIONIO_Request *request, const char *name, ngx_http_complex_value_t *fingerprint) {
+static void ngx_http_redirectionio_set_fingerprint(ngx_http_request_t *r, ngx_http_redirectionio_conf_t *conf, struct REDIRECTIONIO_Request *request, const char *client_ip, const char *name, ngx_http_redirectionio_fingerprint_t *fingerprint) {
     ngx_str_t   value;
 
-    if (fingerprint == NULL || ngx_http_complex_value(r, fingerprint, &value) != NGX_OK || value.len == 0) {
+    if (fingerprint == NULL) {
+        return;
+    }
+
+    // a client could send the header a proxy in front is expected to set
+    if (!fingerprint->always && !redirectionio_trusted_proxies_contains(conf->trusted_proxies, ngx_http_redirectionio_peer_ip(r, client_ip))) {
+        return;
+    }
+
+    if (ngx_http_complex_value(r, fingerprint->value, &value) != NGX_OK || value.len == 0) {
         return;
     }
 
     redirectionio_request_set_fingerprint(request, name, ngx_http_redirectionio_str_to_char(&value, r->pool));
+}
+
+// the realip module replaces the connection address with the client one
+static const char *ngx_http_redirectionio_peer_ip(ngx_http_request_t *r, const char *client_ip) {
+    ngx_str_t                   name = ngx_string("realip_remote_addr");
+    ngx_http_variable_value_t   *vv;
+    ngx_str_t                   peer;
+
+    vv = ngx_http_get_variable(r, &name, ngx_hash_key(name.data, name.len));
+
+    if (vv == NULL || vv->not_found || vv->len == 0) {
+        return client_ip;
+    }
+
+    peer.data = vv->data;
+    peer.len = vv->len;
+
+    return ngx_http_redirectionio_str_to_char(&peer, r->pool);
 }
